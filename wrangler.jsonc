@@ -1,5 +1,6 @@
 {
   "name": "multipliers-os",
+  "account_id": "00000000000000000000000000000000",
   "main": "dist/server/index.js",
   "compatibility_date": "2026-09-05",
   "workers_dev": true,

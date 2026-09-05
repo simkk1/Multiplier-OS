@@ -38,6 +38,7 @@ jobs:
       - name: Patch Cloudflare config
         run: node scripts/patch-wrangler-config.mjs
         env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
 
       - name: Apply D1 migrations
@@ -45,14 +46,14 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 migrations apply ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }} --remote
+          command: d1 migrations apply DB --remote --config wrangler.jsonc
 
       - name: Deploy Worker
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy
+          command: deploy --config wrangler.jsonc
           secrets: |
             ADMIN_EMAILS
             ORG_EMAIL_DOMAIN
