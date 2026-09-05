@@ -195,71 +195,180 @@ export function applicantStatus({ submission, versions, tasks = [] }) {
 
 export function adminDashboard({ cycle, stats, tasks, requests, snapshots, split, gmail }) {
   return `
-    <header class="top">
-      <div><p class="eyebrow">Admin cockpit</p><h1>${escapeHtml(cycle.name)} control room</h1></div>
+    <header class="top ops-top">
+      <div>
+        <p class="eyebrow">Admin cockpit</p>
+        <h1>${escapeHtml(cycleStateLabel(cycle.state))}</h1>
+        <p class="top-note">${escapeHtml(cycle.name)} · ${Number(stats.total || 0)} latest applicants · ${Number(stats.versions || 0)} saved versions</p>
+      </div>
       <div class="actions">
         <a class="secondary" href="/admin/export.xlsx">Export XLSX</a>
         <form method="post" action="/admin/finalize"><button class="primary">Finalize approved dataset</button></form>
       </div>
     </header>
-    <section class="cockpit-band">
-      <div>
-        <span class="pill ${cycle.application_open ? "good" : cycle.edit_open ? "warn" : ""}">${cycle.application_open ? "Applications open" : cycle.edit_open ? "Cohort edits open" : "Applications closed"}</span>
-        <h2>${escapeHtml(cycleStateLabel(cycle.state))}</h2>
-        <p>${escapeHtml(cycle.upcoming_text || "Cycle configuration ready.")}</p>
-      </div>
-      ${workflowProgress(stats)}
-    </section>
-    <section class="metrics">
-      ${metricCard("Latest applicants", stats.total, `${Number(stats.versions || 0)} saved versions`, "blue")}
-      ${metricCard("Manager pending", stats.manager_pending, "approval or recheck", Number(stats.manager_pending || 0) ? "amber" : "green")}
-      ${metricCard("Function pending", stats.function_pending, "queued after manager closure", Number(stats.function_pending || 0) ? "amber" : "green")}
-      ${metricCard("Blockers", stats.blockers, `${Number(stats.open_tasks || 0)} open admin tasks`, Number(stats.blockers || 0) ? "coral" : "green")}
-    </section>
-    <section class="grid two">
-      <article class="panel">
-        <div class="section-head"><h2>Cycle settings</h2><span class="muted">Timings configurable</span></div>
-        ${settingsForm(cycle)}
+    <section class="ops-strip">
+      <article class="ops-card priority-card">
+        <div class="section-head"><h2>Needs attention</h2>${attentionPill(stats, tasks, gmail)}</div>
+        ${attentionList(stats, tasks, gmail)}
       </article>
-      <article class="panel">
-        <div class="section-head"><h2>Email readiness</h2>${gmailPill(gmail)}</div>
-        ${gmailPanel(gmail)}
+      <article class="ops-card">
+        <div class="section-head"><h2>Cycle totals</h2><span class="pill ${cycle.application_open ? "good" : cycle.edit_open ? "warn" : ""}">${cycle.application_open ? "Open" : cycle.edit_open ? "Edits open" : "Closed"}</span></div>
+        ${opsTotals(stats)}
       </article>
     </section>
-    <section class="grid two">
-      <article class="panel">
-        <div class="section-head"><h2>Department split</h2><span class="muted">Latest only</span></div>
-        ${deptBars(split)}
-      </article>
+    ${stageBoard(cycle, stats)}
+    <section class="grid two admin-work-grid">
       <article class="panel">
         <div class="section-head"><h2>Tasks</h2><a class="secondary small" href="/admin/tasks">Open all</a></div>
         ${taskList(tasks)}
+      </article>
+      <article class="panel">
+        <div class="section-head"><h2>Gmail</h2>${gmailPill(gmail)}</div>
+        ${gmailPanel(gmail)}
+      </article>
+      <article class="panel">
+        <div class="section-head"><h2>Department split</h2><span class="muted">Latest only</span></div>
+        ${deptBars(split)}
       </article>
       <article class="panel">
         <div class="section-head"><h2>Approval threads</h2><a class="secondary small" href="/admin/approvals">Open all</a></div>
         ${requestList(requests)}
       </article>
     </section>
-    <section class="panel">
-      <div class="section-head"><h2>Undo snapshots</h2><span class="muted">Manual checkpoint before big ops</span></div>
-      <form class="inline" method="post" action="/admin/snapshot">
-        <input name="label" placeholder="Snapshot label">
-        <button class="secondary">Save snapshot</button>
-      </form>
-      ${snapshots.length ? `<ul class="plain">${snapshots.map((s) => `<li><b>${escapeHtml(s.label)}</b><span>${localStamp(s.created_at)} by ${escapeHtml(s.actor_email)}</span></li>`).join("")}</ul>` : `<p class="muted">No snapshots yet.</p>`}
-    </section>
-    <section class="panel">
-      <div class="section-head"><h2>Next quarter</h2><span class="muted">Available after finalization</span></div>
-      <form class="inline" method="post" action="/admin/new-quarter">
-        <input name="name" placeholder="Next cycle name">
-        <input name="quarter_label" placeholder="Quarter label">
-        <button class="secondary">Start next quarter</button>
-      </form>
+    <section class="utility-stack">
+      <details class="utility">
+        <summary><span>Cycle settings</span><small>Open/close, timings, digest, rework mode</small></summary>
+        ${settingsForm(cycle)}
+      </details>
+      <details class="utility">
+        <summary><span>Snapshots</span><small>${Number(snapshots.length || 0)} saved</small></summary>
+        <form class="inline" method="post" action="/admin/snapshot">
+          <input name="label" placeholder="Snapshot label">
+          <button class="secondary">Save snapshot</button>
+        </form>
+        ${snapshots.length ? `<ul class="plain">${snapshots.map((s) => `<li><b>${escapeHtml(s.label)}</b><span>${localStamp(s.created_at)} by ${escapeHtml(s.actor_email)}</span></li>`).join("")}</ul>` : `<p class="muted">No snapshots yet.</p>`}
+      </details>
+      <details class="utility">
+        <summary><span>Next quarter</span><small>Available after finalization</small></summary>
+        <form class="inline" method="post" action="/admin/new-quarter">
+          <input name="name" placeholder="Next cycle name">
+          <input name="quarter_label" placeholder="Quarter label">
+          <button class="secondary">Start next quarter</button>
+        </form>
+      </details>
     </section>`;
 }
 
 function metricCard(label, value, context, tone = "blue") {
   return `<div class="metric-card ${escapeAttr(tone)}"><small>${escapeHtml(label)}</small><b>${Number(value || 0)}</b><span>${escapeHtml(context || "")}</span></div>`;
+}
+
+function attentionPill(stats, tasks, gmail) {
+  const count = attentionItems(stats, tasks, gmail).length;
+  return count ? `<span class="pill bad">${count} open</span>` : `<span class="pill good">Clear</span>`;
+}
+
+function attentionList(stats, tasks, gmail) {
+  const items = attentionItems(stats, tasks, gmail);
+  if (!items.length) {
+    return `<div class="empty tight"><b>No admin action right now</b><span>Current workflow is clear.</span></div>`;
+  }
+  return `<ul class="attention-list">${items.slice(0, 5).map((item) => `<li class="${escapeAttr(item.tone)}">
+    <span class="signal"></span>
+    <div><b>${escapeHtml(item.title)}</b><small>${escapeHtml(item.detail || "")}</small></div>
+    <a class="secondary small" href="${escapeAttr(item.href)}">${escapeHtml(item.action)}</a>
+  </li>`).join("")}</ul>`;
+}
+
+function attentionItems(stats, tasks, gmail) {
+  const items = [];
+  if (!gmail?.configured) {
+    const missing = gmail?.missing?.length ? `${gmail.missing.length} OAuth secrets missing` : "OAuth secrets missing";
+    items.push({ tone: "bad", title: "Gmail not connected", detail: missing, href: "/admin/approvals", action: "Open" });
+  }
+  if (Number(stats.blockers || 0)) {
+    items.push({ tone: "bad", title: `${Number(stats.blockers || 0)} application blockers`, detail: "Objective checks or admin review flags", href: "/admin/submissions?status=needs_admin_review", action: "Review" });
+  }
+  if (Number(stats.manager_pending || 0)) {
+    items.push({ tone: "warn", title: `${Number(stats.manager_pending || 0)} manager approvals pending`, detail: "Manager approval or recheck", href: "/admin/approvals", action: "Open" });
+  }
+  if (Number(stats.function_pending || 0)) {
+    items.push({ tone: "warn", title: `${Number(stats.function_pending || 0)} function approvals pending`, detail: "Function head queue", href: "/admin/approvals", action: "Open" });
+  }
+  const visibleTasks = (tasks || []).filter((task) => gmail?.configured || task.kind !== "gmail_setup");
+  for (const task of visibleTasks.slice(0, 3)) {
+    items.push({ tone: task.priority === "blocker" ? "bad" : task.priority === "high" ? "warn" : "", title: task.title, detail: task.details || task.priority, href: "/admin/tasks", action: "Task" });
+  }
+  return items;
+}
+
+function opsTotals(stats) {
+  return `<div class="ops-numbers">
+    ${opsNumber("Applicants", stats.total, "latest")}
+    ${opsNumber("Manager", stats.manager_pending, "pending")}
+    ${opsNumber("Function", stats.function_pending, "pending")}
+    ${opsNumber("Final", stats.finalized, "finalized")}
+  </div>`;
+}
+
+function opsNumber(label, value, detail) {
+  return `<div><small>${escapeHtml(label)}</small><b>${Number(value || 0)}</b><span>${escapeHtml(detail)}</span></div>`;
+}
+
+function stageBoard(cycle, stats) {
+  const total = Number(stats.total || 0);
+  const managerPending = Number(stats.manager_pending || 0);
+  const functionPending = Number(stats.function_pending || 0);
+  const finalized = Number(stats.finalized || 0);
+  const managerClosed = Math.max(0, total - managerPending);
+  const functionClosed = Math.max(0, total - functionPending);
+  return `<section class="stage-board">
+    ${stageCard({
+      label: "Collect",
+      value: total,
+      detail: `${Number(stats.versions || 0)} versions`,
+      state: cycle.application_open || cycle.edit_open ? "current" : total ? "done" : "",
+      href: "/admin/submissions",
+      action: "Database",
+    })}
+    ${stageCard({
+      label: "Manager",
+      value: managerPending,
+      detail: `${percent(managerClosed, total)} closed`,
+      state: managerPending ? "current" : total ? "done" : "",
+      href: "/admin/approvals",
+      action: "Approvals",
+    })}
+    ${stageCard({
+      label: "Function",
+      value: functionPending,
+      detail: `${percent(functionClosed, total)} closed`,
+      state: functionPending ? "current" : finalized ? "done" : "",
+      href: "/admin/approvals",
+      action: "Approvals",
+    })}
+    ${stageCard({
+      label: "Finalize",
+      value: finalized,
+      detail: `${percent(finalized, total)} finalized`,
+      state: finalized && finalized === total ? "done" : cycle.state === "finalized" ? "done" : "",
+      post: "/admin/finalize",
+      action: "Finalize",
+    })}
+  </section>`;
+}
+
+function stageCard({ label, value, detail, state = "", href = "", post = "", action }) {
+  const control = post
+    ? `<form method="post" action="${escapeAttr(post)}"><button class="secondary small">${escapeHtml(action)}</button></form>`
+    : `<a class="secondary small" href="${escapeAttr(href)}">${escapeHtml(action)}</a>`;
+  return `<article class="stage-card ${escapeAttr(state)}">
+    <span class="stage-line"></span>
+    <small>${escapeHtml(label)}</small>
+    <b>${Number(value || 0)}</b>
+    <em>${escapeHtml(detail || "")}</em>
+    ${control}
+  </article>`;
 }
 
 function gmailPill(gmail) {
@@ -818,6 +927,7 @@ main{min-width:0;padding:28px;max-width:1480px;width:100%;margin:0 auto}
 .top{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:20px}
 .top h1{margin:0;font-size:30px;letter-spacing:0;line-height:1.12}
 .top .actions{justify-content:flex-end}
+.top-note{margin:7px 0 0;color:var(--muted)}
 .eyebrow{margin:0 0 5px;color:#667381;font-size:12px;font-weight:850;letter-spacing:0;text-transform:uppercase}
 .panel{
   background:rgba(255,255,255,.96);
@@ -832,6 +942,110 @@ main{min-width:0;padding:28px;max-width:1480px;width:100%;margin:0 auto}
 .grid{display:grid;gap:18px;margin-bottom:18px}
 .two{grid-template-columns:repeat(2,minmax(0,1fr))}
 .three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.ops-strip{
+  display:grid;
+  grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr);
+  gap:18px;
+  align-items:start;
+  margin-bottom:18px;
+}
+.ops-card,.stage-card,.utility{
+  background:rgba(255,255,255,.96);
+  border:1px solid var(--line);
+  border-radius:8px;
+  box-shadow:var(--shadow-soft);
+  padding:18px;
+}
+.priority-card{border-color:#d8e2ea}
+.attention-list{
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:grid;
+  gap:10px;
+}
+.attention-list li{
+  display:grid;
+  grid-template-columns:12px minmax(0,1fr) auto;
+  gap:11px;
+  align-items:center;
+  border-top:1px solid var(--line);
+  padding-top:10px;
+}
+.attention-list li:first-child{border-top:0;padding-top:0}
+.attention-list b{display:block;line-height:1.2}
+.attention-list div{min-width:0}
+.attention-list small{display:block;color:var(--muted);margin-top:3px;overflow-wrap:anywhere}
+.signal{
+  width:10px;
+  height:10px;
+  border-radius:999px;
+  background:#c2ccd6;
+}
+.attention-list .warn .signal{background:var(--amber)}
+.attention-list .bad .signal{background:var(--coral)}
+.ops-numbers{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:14px 18px;
+}
+.ops-numbers div{
+  min-width:0;
+  border-top:1px solid var(--line);
+  padding-top:10px;
+}
+.ops-numbers div:nth-child(-n+2){border-top:0;padding-top:0}
+.ops-numbers small{display:block;color:var(--muted);font-weight:850;text-transform:uppercase;font-size:11px}
+.ops-numbers b{display:block;font-size:33px;line-height:1}
+.ops-numbers span{color:var(--muted)}
+.stage-board{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:14px;
+  margin-bottom:18px;
+}
+.stage-card{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:6px 12px;
+  align-items:end;
+  min-height:138px;
+}
+.stage-card .stage-line{
+  grid-column:1/-1;
+  height:5px;
+  border-radius:999px;
+  background:#c2ccd6;
+}
+.stage-card.current .stage-line{background:var(--amber)}
+.stage-card.done .stage-line{background:var(--green)}
+.stage-card small{grid-column:1/-1;color:var(--muted);font-weight:850;text-transform:uppercase;font-size:12px}
+.stage-card b{font-size:36px;line-height:1}
+.stage-card em{font-style:normal;color:var(--muted)}
+.stage-card a,.stage-card form{justify-self:end}
+.stage-card button{white-space:nowrap}
+.admin-work-grid{align-items:start}
+.utility-stack{
+  display:grid;
+  gap:12px;
+  margin-bottom:18px;
+}
+.utility{padding:0;overflow:hidden}
+.utility summary{
+  list-style:none;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:16px 18px;
+  cursor:pointer;
+  font-weight:850;
+}
+.utility summary::-webkit-details-marker{display:none}
+.utility summary small{font-weight:650;color:var(--muted);text-align:right}
+.utility[open] summary{border-bottom:1px solid var(--line);background:#f8fafb}
+.utility>form,.utility>.plain,.utility>p{margin:18px}
+.utility>.form{margin:18px}
 .welcome-band,.cockpit-band,.review-hero{
   display:grid;
   grid-template-columns:minmax(0,1fr) minmax(220px,320px);
@@ -1104,6 +1318,7 @@ td b{font-weight:850}
 }
 .empty b{font-size:17px}
 .empty span{color:var(--muted);max-width:420px}
+.empty.tight{min-height:92px;text-align:left;place-content:start}
 .review-mode{background:#f6f7fa}
 .review{max-width:1120px;margin:0 auto;padding:28px}
 .review-hero{grid-template-columns:minmax(0,1fr) 170px}
@@ -1119,7 +1334,8 @@ td b{font-weight:850}
 .review-actions textarea{min-height:58px}
 @media(max-width:1120px){
   .shell{grid-template-columns:244px minmax(0,1fr)}
-  .metrics,.workflow-progress,.journey{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .metrics,.workflow-progress,.journey,.stage-board{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ops-strip{grid-template-columns:1fr}
   .welcome-band,.cockpit-band{grid-template-columns:1fr}
   .welcome-status{justify-self:stretch}
 }
@@ -1134,7 +1350,7 @@ td b{font-weight:850}
   .top{flex-direction:column;align-items:stretch}
   .top .actions{justify-content:flex-start}
   .welcome-copy h1,.review-hero h1{font-size:31px}
-  .two,.three,.metrics,.metrics.three,.form,.filters,.inline,.inline.route-add,.form-layout,.review-actions{grid-template-columns:1fr}
+  .two,.three,.metrics,.metrics.three,.form,.filters,.inline,.inline.route-add,.form-layout,.review-actions,.ops-strip{grid-template-columns:1fr}
   .form-aside{position:static}
   .details{grid-template-columns:1fr}
   .bars div{grid-template-columns:110px minmax(0,1fr) 34px}
@@ -1145,7 +1361,12 @@ td b{font-weight:850}
   .welcome-copy h1,.review-hero h1{font-size:27px}
   .top h1{font-size:26px;overflow-wrap:anywhere}
   .top .actions,.top .actions form{width:100%}
-  .metrics,.workflow-progress,.journey,.status-grid{grid-template-columns:1fr}
+  .metrics,.workflow-progress,.journey,.status-grid,.stage-board{grid-template-columns:1fr}
+  .attention-list li{grid-template-columns:10px minmax(0,1fr)}
+  .attention-list a{grid-column:2;justify-self:start}
+  .ops-numbers{grid-template-columns:1fr}
+  .ops-numbers div:nth-child(2){border-top:1px solid var(--line);padding-top:10px}
+  .stage-card{min-height:120px}
   .panel{padding:15px}
   .actions .primary,.actions .secondary,.actions .danger,.form-actions button,.form-actions a{width:100%}
   .bars div{grid-template-columns:1fr 1fr 30px}
