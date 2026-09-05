@@ -1,4 +1,4 @@
-import { DEFAULT_ADMIN_EMAIL } from "./constants.js";
+import { DEFAULT_ADMIN_EMAIL, DEFAULT_FUNCTION_SUB_FUNCTIONS, DEFAULT_FUNCTIONS } from "./constants.js";
 import { createGmailDraft, gmailConfigured } from "./email.js";
 import {
   addHours,
@@ -67,9 +67,9 @@ function primaryAdminEmail(env) {
 function bootstrapRoutes(env) {
   const parsed = safeJsonParse(env.FUNCTION_ROUTES_JSON, []);
   if (!Array.isArray(parsed)) {
-    return [];
+    return defaultRoutes();
   }
-  return parsed
+  const routes = parsed
     .map((route) => ({
       department: clean(route?.department),
       sub_department: clean(route?.sub_department),
@@ -77,6 +77,23 @@ function bootstrapRoutes(env) {
       owner_email: clean(route?.owner_email),
     }))
     .filter((route) => route.department && route.owner_name);
+  return routes.length ? routes : defaultRoutes();
+}
+
+function defaultRoutes() {
+  const rows = [];
+  for (const department of DEFAULT_FUNCTIONS) {
+    const subFunctions = DEFAULT_FUNCTION_SUB_FUNCTIONS[department] || [""];
+    for (const subDepartment of subFunctions) {
+      rows.push({
+        department,
+        sub_department: subDepartment,
+        owner_name: "Owner TBD",
+        owner_email: "",
+      });
+    }
+  }
+  return rows;
 }
 
 function bootstrapTeam1Managers(env) {

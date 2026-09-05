@@ -111,20 +111,20 @@ async function route(request, env, cycle, ctx) {
   }
 
   if (path === "/apply" && request.method === "GET") {
-    const submission = await getSubmissionByEmail(env, cycle.id, user.email);
-    return page({ title: "Apply", user, cycle, active: "apply", content: applicantForm({ user, cycle, submission }) });
+    const [submission, routes] = await Promise.all([getSubmissionByEmail(env, cycle.id, user.email), listRoutes(env, cycle.id)]);
+    return page({ title: "Apply", user, cycle, active: "apply", content: applicantForm({ user, cycle, submission, routes }) });
   }
 
   if (path === "/apply" && request.method === "POST") {
-    const submission = await getSubmissionByEmail(env, cycle.id, user.email);
+    const [submission, routes] = await Promise.all([getSubmissionByEmail(env, cycle.id, user.email), listRoutes(env, cycle.id)]);
     if (!cycle.application_open && !(cycle.edit_open && submission)) {
-      return page({ title: "Apply", user, cycle, active: "apply", content: applicantForm({ user, cycle, submission, error: "Applications closed. Admin can open cohort edit access." }) });
+      return page({ title: "Apply", user, cycle, active: "apply", content: applicantForm({ user, cycle, submission, routes, error: "Applications closed. Admin can open cohort edit access." }) });
     }
     try {
       await submitApplication(env, cycle, user, await formData(request));
       return redirect("/status");
     } catch (error) {
-      return page({ title: "Apply", user, cycle, active: "apply", content: applicantForm({ user, cycle, submission, error: error.message }) });
+      return page({ title: "Apply", user, cycle, active: "apply", content: applicantForm({ user, cycle, submission, routes, error: error.message }) });
     }
   }
 

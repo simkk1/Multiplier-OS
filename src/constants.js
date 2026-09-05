@@ -2,6 +2,62 @@ export const DEFAULT_ADMIN_EMAIL = "admin@example.com";
 export const DEFAULT_SENDER_EMAIL = "multipliers@example.com";
 export const DEFAULT_ORG_EMAIL_DOMAIN = "example.com";
 
+export const DEFAULT_FUNCTIONS = [
+  "Man Matters",
+  "BeBodywise",
+  "Little Joys",
+  "Root Labs",
+  "Absolute Science",
+  "OWN",
+  "Tech",
+  "Finance",
+  "HR",
+  "Marketplace",
+  "Admin",
+  "Supply Chain",
+  "NPD",
+  "Quality",
+  "Legal",
+  "CEO's Office",
+  "CoE",
+  "Offline",
+];
+
+export const DEFAULT_SUB_FUNCTIONS = [
+  "Performance Mkt",
+  "Content",
+  "Product Design",
+  "Product Manager",
+  "Category",
+  "Product Engineer",
+  "TA",
+  "HRBP",
+  "NPD (Innovation)",
+  "NPD (R&D)",
+  "NPD Packaging & Development",
+  "Tech (product)",
+  "Tech (non product)",
+  "Operations",
+  "Retention",
+  "Marketplace (P&L)",
+  "Social Media",
+  "Analytics",
+];
+
+export const DEFAULT_FUNCTION_SUB_FUNCTIONS = {
+  "Man Matters": ["Performance Mkt", "Content", "Product Design", "Product Manager", "Category", "Retention", "Social Media", "Analytics"],
+  BeBodywise: ["Performance Mkt", "Content", "Product Design", "Product Manager", "Category", "Retention", "Social Media", "Analytics"],
+  "Little Joys": ["Performance Mkt", "Content", "Product Design", "Product Manager", "Category", "Retention", "Social Media", "Analytics"],
+  "Root Labs": ["Performance Mkt", "Content", "Product Design", "Product Manager", "Category", "Retention", "Social Media", "Analytics"],
+  "Absolute Science": ["Performance Mkt", "Content", "Product Design", "Product Manager", "Category", "Retention", "Social Media", "Analytics"],
+  OWN: ["Performance Mkt", "Content", "Product Design", "Product Manager", "Category", "Retention", "Social Media", "Analytics"],
+  Tech: ["Product Engineer", "Tech (product)", "Tech (non product)", "Analytics"],
+  HR: ["TA", "HRBP"],
+  Marketplace: ["Marketplace (P&L)"],
+  "Supply Chain": ["Operations"],
+  NPD: ["NPD (Innovation)", "NPD (R&D)", "NPD Packaging & Development"],
+};
+
 export const REQUIRED_FIELDS = [
   "applicant_name",
   "applicant_email",

@@ -1,4 +1,4 @@
-import { STATUS_LABELS } from "./constants.js";
+import { DEFAULT_FUNCTION_SUB_FUNCTIONS, DEFAULT_FUNCTIONS, DEFAULT_SUB_FUNCTIONS, STATUS_LABELS } from "./constants.js";
 import { MULTIPLIERS_LOGO_DATA_URI } from "./logo.js";
 import { escapeAttr, escapeHtml, flagLabels, inputDateTime, localStamp, rowData, safeJsonParse } from "./util.js";
 
@@ -52,6 +52,7 @@ export function layout({ title, user, cycle, active = "home", content }) {
       ${content}
     </main>
   </div>
+  <script>${clientScript()}</script>
 </body>
 </html>`;
 }
@@ -75,40 +76,74 @@ function testLoginLinks(admin) {
 export function applicantHome({ user, cycle, submission, stats, split }) {
   const hasSubmission = Boolean(submission);
   const open = cycle.application_open || cycle.edit_open;
+  const actionLabel = hasSubmission ? (cycle.edit_open ? "Edit application" : "View application") : "Start application";
+  const actionHref = "/apply";
   return `
-    <section class="welcome-band">
-      <div class="welcome-copy">
-        <p class="eyebrow">Applicant face</p>
+    <section class="applicant-hero">
+      <div class="hero-art" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="hero-copy">
+        <p class="eyebrow">Multiplier cycle</p>
         <h1>Hello potential multiplier, are you ready to dive in?</h1>
-        <p>${hasSubmission ? "Your latest application is saved and ready for the approval flow." : escapeHtml(cycle.upcoming_text)}</p>
+        <p>${hasSubmission ? "Your application is saved. You can come back here to see status, requested changes, and the latest version." : open ? "Capture the target that can move the business, the baseline you are starting from, and the support you need to make it real." : escapeHtml(cycle.upcoming_text)}</p>
         <div class="actions">
-          <a class="primary" href="/apply">${hasSubmission ? "Open application" : open ? "Start application" : "View application"}</a>
-          <a class="secondary" href="/status">Approval status</a>
+          <a class="primary hero-cta" href="${actionHref}">${escapeHtml(actionLabel)}</a>
+          ${hasSubmission ? `<a class="secondary" href="/status">Approval status</a>` : ""}
         </div>
       </div>
-      <div class="welcome-status">
-        <span class="pill ${open ? "good" : "warn"}">${open ? "Applications open" : "Applications closed"}</span>
+      <div class="hero-ticket">
+        <small>${open ? "Applications open" : "Applications closed"}</small>
         <b>${escapeHtml(cycle.quarter_label || cycle.name)}</b>
-        <small>${hasSubmission ? `Latest version v${submission.version_no || 1}` : "No submission yet"}</small>
+        <span>${hasSubmission ? `Latest version v${submission.version_no || 1}` : "Not submitted yet"}</span>
       </div>
     </section>
 
+    <section class="experience-path">
+      ${experienceStep("1", "Choose your lane", hasSubmission ? "Function and manager are saved." : "Pick your function and sub-function.")}
+      ${experienceStep("2", "Shape the target", "Regular OKR, baseline, AOP, and multiplier target.")}
+      ${experienceStep("3", "Get aligned", hasSubmission ? "Track manager and function approvals." : "Confirm manager alignment before you submit.")}
+    </section>
+
     <section class="grid two">
-      <article class="panel feature-panel">
+      <article class="panel applicant-panel">
         <div class="section-head">
-          <h2>${hasSubmission ? "Your approval journey" : "Before you apply"}</h2>
-          ${hasSubmission ? statusPill(submission.status) : `<span class="pill">Not started</span>`}
+          <h2>${hasSubmission ? "Your approval journey" : "Your next move"}</h2>
+          ${hasSubmission ? statusPill(submission.status) : `<span class="pill">Fresh start</span>`}
         </div>
-        ${hasSubmission ? applicantJourney(submission) : emptyState("Use the application form when the cycle is open. Your login name and email will stay locked from Google login.")}
+        ${hasSubmission ? applicantJourney(submission) : emptyState(open ? "Start the application when you are ready." : "Applications are closed right now.")}
       </article>
-      <article class="panel feature-panel">
-        <div class="section-head"><h2>Approval status</h2><span class="muted">${escapeHtml(user.email)}</span></div>
-        ${hasSubmission ? statusBlock(submission) : emptyState("No application is linked to this account yet.")}
+      <article class="panel applicant-panel">
+        <div class="section-head"><h2>${hasSubmission ? "Saved options" : "Cycle snapshot"}</h2><span class="muted">${escapeHtml(user.email)}</span></div>
+        ${hasSubmission ? applicantHomeActions(cycle, submission) : cycleSnapshot(stats, split)}
       </article>
     </section>
 
     ${cycle.state === "finalized" ? publicSummary(stats, split) : closedSummary(cycle, stats, split)}
   `;
+}
+
+function experienceStep(number, title, detail) {
+  return `<article>
+    <span>${escapeHtml(number)}</span>
+    <b>${escapeHtml(title)}</b>
+    <small>${escapeHtml(detail)}</small>
+  </article>`;
+}
+
+function applicantHomeActions(cycle, submission) {
+  return `<div class="home-actions">
+    <a class="primary" href="/apply">${cycle.edit_open ? "Edit latest version" : "View latest version"}</a>
+    <a class="secondary" href="/status">See approval status</a>
+    ${submission.status === "needs_admin_review" || submission.manager_status === "rework" || submission.function_status === "rework" ? `<a class="secondary" href="/status">Requested changes</a>` : ""}
+  </div>`;
+}
+
+function cycleSnapshot(stats, split) {
+  return `<div class="snapshot">
+    <div><small>Total applicants</small><b>${Number(stats.total || 0)}</b></div>
+    <div><small>Functions active</small><b>${Number(split?.length || 0)}</b></div>
+  </div>`;
 }
 
 function publicSummary(stats, split) {
@@ -140,15 +175,26 @@ function closedSummary(cycle, stats, split) {
     </section>`;
 }
 
-export function applicantForm({ user, cycle, submission, error = "" }) {
+export function applicantForm({ user, cycle, submission, routes = [], error = "" }) {
   const data = submission ? rowData(submission) : {};
   const canEdit = Boolean(cycle.application_open || (cycle.edit_open && submission));
+  const routeOptions = buildRouteOptions(routes, data);
   return `
-    <header class="top">
-      <div><p class="eyebrow">Application</p><h1>Multiplier application</h1></div>
-      <span class="pill ${canEdit ? "good" : ""}">${canEdit ? "Editable" : "View only"}</span>
+    <header class="top form-top">
+      <div>
+        <p class="eyebrow">Application</p>
+        <h1>Build your multiplier case</h1>
+        <p class="top-note">One page, four calm sections. Your latest saved version is what approvals will use.</p>
+      </div>
+      <span class="pill ${canEdit ? "good" : "warn"}">${canEdit ? "Editable" : "View only"}</span>
     </header>
     ${error ? `<div class="notice bad">${escapeHtml(error)}</div>` : ""}
+    <nav class="form-steps" aria-label="Application sections">
+      <a href="#you">You</a>
+      <a href="#team">Team</a>
+      <a href="#goal">Goal</a>
+      <a href="#alignment">Alignment</a>
+    </nav>
     <section class="form-layout">
       <aside class="form-aside">
         <div>
@@ -164,27 +210,42 @@ export function applicantForm({ user, cycle, submission, error = "" }) {
         ${submission ? `<div>${statusBlock(submission)}</div>` : ""}
       </aside>
       <form method="post" action="/apply" class="panel form application-form">
-        <div class="form-section full"><h2>Identity</h2><p>Prefilled from login</p></div>
+        <div class="form-chapter full" id="you">
+          <span>1</span>
+          <div><h2>You</h2><p>Name and email are locked from login so versions stay clean.</p></div>
+        </div>
         ${lockedField("Name", "applicant_name", data.applicant_name || user.name)}
         ${lockedField("Email", "applicant_email", data.applicant_email || user.email)}
 
-        <div class="form-section full"><h2>Manager and team</h2><p>Used for approval routing</p></div>
-        ${field("Manager name", "manager_name", data.manager_name, "text", canEdit, true)}
-        ${field("Manager email", "manager_email", data.manager_email, "email", canEdit, true)}
-        ${field("Department", "department", data.department, "text", canEdit, true)}
-        ${field("Sub department", "sub_department", data.sub_department, "text", canEdit, false)}
+        <div class="form-chapter full" id="team">
+          <span>2</span>
+          <div><h2>Team</h2><p>This decides the approval path and function-head grouping.</p></div>
+        </div>
+        ${selectField("Function", "department", data.department, routeOptions.functions, canEdit, true, "Choose the closest business/function home for this multiplier.")}
+        ${selectField("Sub-function", "sub_department", data.sub_department, routeOptions.subFunctions, canEdit, false, "Pick one only if it applies. The list changes after function selection.")}
+        ${field("Manager name", "manager_name", data.manager_name, "text", canEdit, true, "Use the name your manager would recognize in the approval mail.")}
+        ${field("Manager email", "manager_email", data.manager_email, "email", canEdit, true, "This is where manager approval will be requested.")}
 
-        <div class="form-section full"><h2>Target details</h2><p>Latest version drives every downstream email</p></div>
-        ${textarea("Regular OKR", "regular_okr", data.regular_okr, canEdit, true)}
-        ${textarea("Multiplier target", "multiplier_target", data.multiplier_target, canEdit, true)}
-        ${textarea("Baseline", "baseline", data.baseline, canEdit, true)}
-        ${textarea("AOP", "aop", data.aop, canEdit, Boolean(cycle.aop_required))}
-        ${textarea("Team vision link", "team_vision", data.team_vision, canEdit, true)}
-        ${textarea("Flywheel moved", "flywheel", data.flywheel, canEdit, true)}
-        <label class="check full alignment-check"><input type="checkbox" name="manager_aligned" ${data.manager_aligned ? "checked" : ""} ${canEdit ? "" : "disabled"} required><span>Manager is aligned</span></label>
-        ${textarea("Support required from Multipliers team", "support_required", data.support_required, canEdit, false)}
+        <div class="form-chapter full" id="goal">
+          <span>3</span>
+          <div><h2>Multiplier goal</h2><p>Be concrete. Numbers, dates, SKU, channel, platform, and scope make approvals smoother.</p></div>
+        </div>
+        ${textarea("What is your regular OKR?", "regular_okr", data.regular_okr, canEdit, true, "Write the regular OKR this multiplier will sit beside. Add SKU, channel, or platform if relevant.")}
+        ${textarea("What is your Multiplier target?", "multiplier_target", data.multiplier_target, canEdit, true, "State the multiplier target with the metric, start point, target number, and timeline.")}
+        ${textarea("What is the baseline for your Multiplier?", "baseline", data.baseline, canEdit, true, "Add the current run rate or starting point. If the baseline is zero, say zero and explain why.")}
+        ${textarea("What is the AOP?", "aop", data.aop, canEdit, Boolean(cycle.aop_required), "Add the AOP number if this applies to your team.")}
+        ${textarea("How is it in line with your team's vision?", "team_vision", data.team_vision, canEdit, true, "Connect this target to the team's focus for the quarter. Keep it specific.")}
+        ${textarea("What part of the flywheel are you moving?", "flywheel", data.flywheel, canEdit, true, "Examples: acquisition, conversion, retention, revenue, operations speed, quality, or cost efficiency.")}
+
+        <div class="form-chapter full" id="alignment">
+          <span>4</span>
+          <div><h2>Alignment</h2><p>Confirm manager alignment and call out only the support that needs Multipliers intervention.</p></div>
+        </div>
+        <label class="check full alignment-check"><input type="checkbox" name="manager_aligned" ${data.manager_aligned ? "checked" : ""} ${canEdit ? "" : "disabled"} required><span>Is your manager in line with this?</span><small>Tick this only if your manager is aligned with the multiplier target.</small></label>
+        ${textarea("What support would you require from Multipliers team?", "support_required", data.support_required, canEdit, false, "Do not list normal dependencies. Mention only specific unblockers where the Multipliers team can help.")}
+        <script type="application/json" id="route-options">${jsonScript(routeOptions.byFunction)}</script>
         <div class="actions full form-actions">
-          <button class="primary" ${canEdit ? "" : "disabled"}>Save application</button>
+          <button class="primary" ${canEdit ? "" : "disabled"}>${submission ? "Save latest version" : "Submit application"}</button>
           <a class="secondary" href="/status">Status</a>
         </div>
       </form>
@@ -603,28 +664,28 @@ function reviewItem(item, token) {
 
 export function routesPage({ routes, team1 }) {
   return `
-    <header class="top"><div><p class="eyebrow">Routes</p><h1>Function heads and Team 1</h1></div></header>
+    <header class="top"><div><p class="eyebrow">Routes</p><h1>Function dropdowns and approvers</h1><p class="top-note">These rows power the applicant function/sub-function dropdowns and later route function-head emails.</p></div></header>
     <section class="panel">
       <form method="post" action="/admin/routes" class="route-table">
-        <div class="section-head"><h2>Function routes</h2><span class="muted">Used for function-head approval emails</span></div>
-        <div class="table-wrap"><table><thead><tr><th>Department</th><th>Sub dept</th><th>Owner</th><th>Email</th><th>Active</th></tr></thead>
+        <div class="section-head"><h2>Function routes</h2><span class="muted">Turn off a row to remove it from applicant dropdowns</span></div>
+        <div class="table-wrap"><table><thead><tr><th>Function</th><th>Sub-function</th><th>Function head</th><th>Email</th><th>Shown</th></tr></thead>
         <tbody>${routes.map((r) => `<tr>
           <td><input name="route_department_${r.id}" value="${escapeAttr(r.department)}" required></td>
           <td><input name="route_sub_department_${r.id}" value="${escapeAttr(r.sub_department || "")}" placeholder="Optional"></td>
           <td><input name="route_owner_name_${r.id}" value="${escapeAttr(r.owner_name)}" required></td>
           <td><input name="route_owner_email_${r.id}" value="${escapeAttr(r.owner_email || "")}" placeholder="owner@example.com"></td>
-          <td><label class="check"><input type="checkbox" name="route_active_${r.id}" ${r.active ? "checked" : ""}><span>On</span></label></td>
+          <td><label class="check"><input type="checkbox" name="route_active_${r.id}" ${r.active ? "checked" : ""}><span>Yes</span></label></td>
         </tr>`).join("") || `<tr><td colspan="5">No routes yet.</td></tr>`}</tbody></table></div>
         <button class="primary">Save routes</button>
       </form>
     </section>
     <section class="panel">
-      <div class="section-head"><h2>Add function route</h2><span class="muted">Department owner for grouped approval</span></div>
+      <div class="section-head"><h2>Add dropdown option</h2><span class="muted">Also becomes an approval route once function-head email is filled</span></div>
       <form method="post" action="/admin/routes/add" class="form compact">
-        ${field("Department", "department", "", "text", true, true)}
-        ${field("Sub department", "sub_department", "", "text", true, false)}
-        ${field("Owner name", "owner_name", "", "text", true, true)}
-        ${field("Owner email", "owner_email", "", "email", true, false)}
+        ${field("Function", "department", "", "text", true, true)}
+        ${field("Sub-function", "sub_department", "", "text", true, false)}
+        ${field("Function head", "owner_name", "", "text", true, true)}
+        ${field("Function-head email", "owner_email", "", "email", true, false)}
         <button class="primary full">Add route</button>
       </form>
     </section>
@@ -772,16 +833,116 @@ function lockedField(label, name, value) {
   return `<label><span>${escapeHtml(label)}</span><input name="${name}" value="${escapeAttr(value)}" readonly></label>`;
 }
 
-function field(label, name, value, type, enabled, required) {
-  return `<label><span>${escapeHtml(label)}${required ? " *" : ""}</span><input name="${name}" type="${type}" value="${escapeAttr(value || "")}" ${enabled ? "" : "readonly"} ${required ? "required" : ""}></label>`;
+function field(label, name, value, type, enabled, required, help = "") {
+  return `<label><span>${escapeHtml(label)}${required ? " *" : ""}</span><input name="${name}" type="${type}" value="${escapeAttr(value || "")}" ${enabled ? "" : "readonly"} ${required ? "required" : ""}>${help ? `<small>${escapeHtml(help)}</small>` : ""}</label>`;
 }
 
-function textarea(label, name, value, enabled, required) {
-  return `<label class="full"><span>${escapeHtml(label)}${required ? " *" : ""}</span><textarea name="${name}" ${enabled ? "" : "readonly"} ${required ? "required" : ""}>${escapeHtml(value || "")}</textarea></label>`;
+function selectField(label, name, value, options, enabled, required, help = "") {
+  const choices = uniqueClean([value, ...options]).filter(Boolean);
+  return `<label><span>${escapeHtml(label)}${required ? " *" : ""}</span><select name="${name}" ${enabled ? "" : "disabled"} ${required ? "required" : ""} data-field="${escapeAttr(name)}">
+    <option value="">Select ${escapeHtml(label.toLowerCase())}</option>
+    ${choices.map((choice) => option(choice, value, choice)).join("")}
+  </select>${!enabled ? `<input type="hidden" name="${name}" value="${escapeAttr(value || "")}">` : ""}${help ? `<small>${escapeHtml(help)}</small>` : ""}</label>`;
+}
+
+function textarea(label, name, value, enabled, required, help = "") {
+  return `<label class="full"><span>${escapeHtml(label)}${required ? " *" : ""}</span><textarea name="${name}" ${enabled ? "" : "readonly"} ${required ? "required" : ""}>${escapeHtml(value || "")}</textarea>${help ? `<small>${escapeHtml(help)}</small>` : ""}</label>`;
 }
 
 function option(value, current, label) {
   return `<option value="${escapeAttr(value)}" ${String(value) === String(current) ? "selected" : ""}>${escapeHtml(label)}</option>`;
+}
+
+function buildRouteOptions(routes, data = {}) {
+  const activeRoutes = (routes || []).filter((route) => route.active !== 0);
+  const byFunction = {};
+  for (const route of activeRoutes) {
+    const department = String(route.department || "").trim();
+    const subDepartment = String(route.sub_department || "").trim();
+    if (!department) {
+      continue;
+    }
+    if (!byFunction[department]) {
+      byFunction[department] = [];
+    }
+    if (subDepartment) {
+      byFunction[department].push(subDepartment);
+    }
+  }
+  for (const department of DEFAULT_FUNCTIONS) {
+    if (!byFunction[department]) {
+      byFunction[department] = [...(DEFAULT_FUNCTION_SUB_FUNCTIONS[department] || [])];
+    }
+  }
+  if (data.department && !byFunction[data.department]) {
+    byFunction[data.department] = data.sub_department ? [data.sub_department] : [];
+  }
+  for (const key of Object.keys(byFunction)) {
+    byFunction[key] = uniqueClean(byFunction[key]);
+  }
+  const functions = uniqueClean([...Object.keys(byFunction), data.department]);
+  const selectedSubs = data.department && Array.isArray(byFunction[data.department]) ? byFunction[data.department] : DEFAULT_SUB_FUNCTIONS;
+  const subFunctions = uniqueClean([...selectedSubs, data.sub_department]);
+  return { functions, subFunctions, byFunction };
+}
+
+function uniqueClean(values) {
+  const seen = new Set();
+  const out = [];
+  for (const value of values || []) {
+    const cleanValue = String(value || "").trim();
+    const key = cleanValue.toLowerCase();
+    if (!cleanValue || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push(cleanValue);
+  }
+  return out;
+}
+
+function jsonScript(value) {
+  return JSON.stringify(value)
+    .replaceAll("&", "\\u0026")
+    .replaceAll("<", "\\u003c")
+    .replaceAll(">", "\\u003e");
+}
+
+function clientScript() {
+  return `
+(() => {
+  const data = document.getElementById("route-options");
+  const department = document.querySelector("[data-field='department']");
+  const subDepartment = document.querySelector("[data-field='sub_department']");
+  if (!data || !department || !subDepartment || subDepartment.disabled) return;
+  let byFunction = {};
+  try { byFunction = JSON.parse(data.textContent || "{}"); } catch { byFunction = {}; }
+  const allOptions = Array.from(new Set(Object.values(byFunction).flat().filter(Boolean))).sort();
+  const current = subDepartment.value;
+  function fill() {
+    const chosen = department.value;
+    const options = chosen && Array.isArray(byFunction[chosen]) ? byFunction[chosen] : allOptions;
+    const previous = subDepartment.value || current;
+    subDepartment.innerHTML = "";
+    const empty = document.createElement("option");
+    empty.value = "";
+    empty.textContent = options.length ? "Select sub-function if applicable" : "No sub-function needed";
+    subDepartment.appendChild(empty);
+    for (const optionText of options) {
+      const option = document.createElement("option");
+      option.value = optionText;
+      option.textContent = optionText;
+      if (optionText === previous) option.selected = true;
+      subDepartment.appendChild(option);
+    }
+  }
+  department.addEventListener("change", () => {
+    subDepartment.value = "";
+    fill();
+  });
+  fill();
+})();
+`;
 }
 
 function style() {
@@ -844,6 +1005,8 @@ button:hover,.primary:hover,.secondary:hover,.danger:hover{transform:translateY(
 .small{min-height:30px;padding:5px 9px;font-size:13px}
 input,select,textarea{
   width:100%;
+  min-width:0;
+  max-width:100%;
   border:1px solid var(--line-strong);
   border-radius:7px;
   background:#fff;
@@ -858,7 +1021,7 @@ input:focus,select:focus,textarea:focus{
   box-shadow:0 0 0 3px rgba(39,100,168,.14);
 }
 button:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
-.shell{display:grid;grid-template-columns:276px minmax(0,1fr);min-height:100vh}
+.shell{display:grid;grid-template-columns:276px minmax(0,1fr);min-height:100vh;max-width:100vw}
 .side{
   position:sticky;
   top:0;
@@ -951,9 +1114,10 @@ nav a.active{background:#ffffff;color:#142033;box-shadow:0 10px 24px rgba(0,0,0,
 .muted,td span,li span{color:var(--muted)}
 main{min-width:0;padding:28px;max-width:1480px;width:100%;margin:0 auto}
 .top{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:20px}
+.top>div{min-width:0;max-width:100%}
 .top h1{margin:0;font-size:30px;letter-spacing:0;line-height:1.12}
 .top .actions{justify-content:flex-end}
-.top-note{margin:7px 0 0;color:var(--muted)}
+.top-note{margin:7px 0 0;color:var(--muted);max-width:100%;white-space:normal;overflow-wrap:break-word}
 .eyebrow{margin:0 0 5px;color:#667381;font-size:12px;font-weight:850;letter-spacing:0;text-transform:uppercase}
 .panel{
   background:rgba(255,255,255,.96);
@@ -968,6 +1132,160 @@ main{min-width:0;padding:28px;max-width:1480px;width:100%;margin:0 auto}
 .grid{display:grid;gap:18px;margin-bottom:18px}
 .two{grid-template-columns:repeat(2,minmax(0,1fr))}
 .three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.applicant-hero{
+  position:relative;
+  min-height:410px;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 280px;
+  gap:24px;
+  align-items:end;
+  border:1px solid #cfe4dd;
+  border-radius:8px;
+  background:
+    linear-gradient(135deg,rgba(22,120,95,.14),rgba(255,209,102,.16) 45%,rgba(93,182,164,.18)),
+    #fff;
+  box-shadow:var(--shadow);
+  margin-bottom:18px;
+  padding:34px;
+  overflow:hidden;
+}
+.hero-copy{position:relative;z-index:1;max-width:820px}
+.hero-copy h1{
+  margin:0;
+  font-size:48px;
+  line-height:1.02;
+  letter-spacing:0;
+  max-width:780px;
+}
+.hero-copy p{margin:14px 0 0;color:#445565;font-size:17px;max-width:700px}
+.hero-cta{min-height:46px;padding-inline:18px}
+.hero-ticket{
+  position:relative;
+  z-index:1;
+  display:grid;
+  gap:6px;
+  background:rgba(255,255,255,.86);
+  border:1px solid rgba(20,32,51,.12);
+  border-radius:8px;
+  padding:18px;
+  box-shadow:var(--shadow-soft);
+}
+.hero-ticket small{color:var(--green);font-weight:850;text-transform:uppercase;font-size:12px}
+.hero-ticket b{font-size:25px;line-height:1.08}
+.hero-ticket span{color:var(--muted)}
+.hero-art{
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  opacity:.9;
+}
+.hero-art span{
+  position:absolute;
+  width:70px;
+  height:16px;
+  border-radius:999px;
+  background:#ffd166;
+  transform:rotate(-18deg);
+}
+.hero-art span:nth-child(1){right:80px;top:72px;background:#16785f}
+.hero-art span:nth-child(2){right:190px;top:130px;background:#ef6f61;width:44px}
+.hero-art span:nth-child(3){left:52px;bottom:72px;background:#5db6a4;width:98px}
+.hero-art span:nth-child(4){right:42px;bottom:96px;background:#2764a8;width:116px}
+.hero-art span:nth-child(5){left:45%;top:48px;background:#ffd166;width:58px}
+.experience-path{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:12px;
+  margin-bottom:18px;
+}
+.experience-path article{
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:8px;
+  box-shadow:var(--shadow-soft);
+  padding:15px;
+  display:grid;
+  grid-template-columns:34px minmax(0,1fr);
+  gap:9px 12px;
+  align-items:start;
+}
+.experience-path span{
+  width:34px;
+  height:34px;
+  border-radius:8px;
+  display:grid;
+  place-items:center;
+  background:var(--green);
+  color:#fff;
+  font-weight:850;
+}
+.experience-path b{line-height:1.2}
+.experience-path small{grid-column:2;color:var(--muted)}
+.applicant-panel{min-height:210px}
+.home-actions{display:flex;gap:9px;flex-wrap:wrap}
+.snapshot{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+.snapshot div{
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--surface-3);
+  padding:14px;
+}
+.snapshot small{display:block;color:var(--muted);font-weight:850;text-transform:uppercase;font-size:12px}
+.snapshot b{display:block;font-size:34px;line-height:1}
+.form-steps{
+  position:sticky;
+  top:0;
+  z-index:5;
+  display:flex;
+  gap:8px;
+  overflow:auto;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  padding:0 0 12px;
+  margin-bottom:6px;
+  background:linear-gradient(180deg,#fff 0,#fff 70%,rgba(255,255,255,0));
+}
+.form-steps a{
+  flex:0 0 auto;
+  min-width:104px;
+  text-align:center;
+  background:#fff;
+  border:1px solid var(--line-strong);
+  border-radius:8px;
+  padding:9px 13px;
+  font-weight:850;
+  color:#25313d;
+  box-shadow:var(--shadow-soft);
+}
+.form-chapter{
+  display:grid;
+  grid-template-columns:34px minmax(0,1fr);
+  gap:12px;
+  align-items:start;
+  border-top:1px solid var(--line);
+  padding-top:18px;
+  scroll-margin-top:70px;
+}
+.form-chapter:first-child{border-top:0;padding-top:0}
+.form-chapter span{
+  width:34px;
+  height:34px;
+  border-radius:8px;
+  display:grid;
+  place-items:center;
+  background:#142033;
+  color:#fff;
+  font-weight:850;
+  flex:0 0 auto;
+}
+.form-chapter h2{margin:0 0 3px;font-size:20px}
+.form-chapter>div{min-width:0;max-width:100%}
+.form-chapter p{margin:0;color:var(--muted);overflow-wrap:break-word}
 .ops-strip{
   display:grid;
   grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr);
@@ -1173,9 +1491,12 @@ main{min-width:0;padding:28px;max-width:1480px;width:100%;margin:0 auto}
 .actions{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
 .form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
 .form.compact textarea{min-height:74px}
+.form label{min-width:0}
 .form label span{display:block;margin-bottom:6px;color:#364454;font-weight:760}
+.form label small{display:block;margin-top:6px;color:var(--muted);font-size:13px;line-height:1.35;max-width:100%;white-space:normal;overflow-wrap:break-word}
 .full{grid-column:1/-1}
 .form-layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:18px;align-items:start}
+.form-layout,.application-form{min-width:0}
 .form-aside{
   position:sticky;
   top:20px;
@@ -1360,41 +1681,64 @@ td b{font-weight:850}
 .review-actions textarea{min-height:58px}
 @media(max-width:1120px){
   .shell{grid-template-columns:244px minmax(0,1fr)}
-  .metrics,.workflow-progress,.journey,.stage-board{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .metrics,.workflow-progress,.journey,.stage-board,.experience-path{grid-template-columns:repeat(2,minmax(0,1fr))}
   .ops-strip{grid-template-columns:1fr}
-  .welcome-band,.cockpit-band{grid-template-columns:1fr}
+  .welcome-band,.cockpit-band,.applicant-hero{grid-template-columns:1fr}
   .welcome-status{justify-self:stretch}
+  .hero-ticket{max-width:360px}
 }
 @media(max-width:860px){
   body{font-size:14px}
-  .shell{grid-template-columns:1fr}
-  .side{position:static;height:auto;padding:16px;gap:14px}
+  .shell{grid-template-columns:minmax(0,1fr);overflow:hidden}
+  .side{position:static;height:auto;padding:16px;gap:14px;max-width:100vw;overflow:hidden}
   nav{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
   nav a{flex:0 0 auto;justify-content:center;text-align:center;min-width:104px}
   .role-switch{border:0;padding:0}
   .cycle-card,.who{display:none}
-  main,.review{padding:16px}
+  main,.review{max-width:100vw;padding:16px}
   .top{flex-direction:column;align-items:stretch}
+  .top-note{width:calc(100vw - 32px);max-width:100%}
   .top .actions{justify-content:flex-start}
-  .welcome-copy h1,.review-hero h1{font-size:31px}
+  .welcome-copy h1,.review-hero h1,.hero-copy h1{font-size:31px}
   .two,.three,.metrics,.metrics.three,.form,.filters,.inline,.inline.route-add,.form-layout,.review-actions,.ops-strip{grid-template-columns:1fr}
   .form-aside{position:static}
+  .application-form{width:100%;max-width:100%}
+  .form-chapter{grid-template-columns:34px minmax(0,calc(100vw - 98px))}
+  .form-chapter>div{width:calc(100vw - 98px);max-width:100%}
+  .form label{width:100%;max-width:100%}
+  .form label small{width:calc(100vw - 64px);max-width:100%}
+  .form-steps{top:0}
   .details{grid-template-columns:1fr}
   .bars div{grid-template-columns:110px minmax(0,1fr) 34px}
   .review-hero{grid-template-columns:1fr}
 }
 @media(max-width:560px){
-  .welcome-band,.cockpit-band,.review-hero{padding:18px}
-  .welcome-copy h1,.review-hero h1{font-size:27px}
+  .welcome-band,.cockpit-band,.review-hero,.applicant-hero{padding:18px}
+  .applicant-hero{min-height:420px}
+  .welcome-copy h1,.review-hero h1,.hero-copy h1{font-size:27px}
+  .top-note{width:auto;max-width:335px}
   .top h1{font-size:26px;overflow-wrap:anywhere}
   .top .actions,.top .actions form{width:100%}
-  .metrics,.workflow-progress,.journey,.status-grid,.stage-board{grid-template-columns:1fr}
+  .metrics,.workflow-progress,.journey,.status-grid,.stage-board,.experience-path,.snapshot{grid-template-columns:1fr}
   .attention-list li{grid-template-columns:10px minmax(0,1fr)}
   .attention-list a{grid-column:2;justify-self:start}
   .ops-numbers{grid-template-columns:1fr}
   .ops-numbers div:nth-child(2){border-top:1px solid var(--line);padding-top:10px}
   .stage-card{min-height:120px}
+  .hero-ticket{max-width:none}
   .panel{padding:15px}
+  .application-form{max-width:calc(100vw - 32px)}
+  .application-form label{max-width:326px}
+  .application-form .form-chapter>div{width:auto;max-width:260px}
+  .application-form label small{width:auto;max-width:294px}
+  .form-steps{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:7px;
+    overflow:visible;
+    width:min(100%,358px);
+  }
+  .form-steps a{min-width:0;padding:9px 6px;font-size:13px}
   .actions .primary,.actions .secondary,.actions .danger,.form-actions button,.form-actions a{width:100%}
   .bars div{grid-template-columns:1fr 1fr 30px}
 }`;
