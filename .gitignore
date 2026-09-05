@@ -4,6 +4,7 @@
 .openai/
 .wrangler/
 .tools/
+artifacts/
 dist/
 node_modules/
 *.zip
