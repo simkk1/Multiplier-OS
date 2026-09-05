@@ -77,26 +77,39 @@ function testLoginLinks(admin) {
 export function applicantHome({ user, cycle, submission, stats, split }) {
   const hasSubmission = Boolean(submission);
   const open = cycle.application_open || cycle.edit_open;
+  const cycleLabel = cycle.quarter_label || cycle.name || "Current cycle";
   const actionLabel = hasSubmission ? (cycle.edit_open ? "Edit application" : "View application") : "Start application";
   const actionHref = "/apply";
+  const heroHeadline = hasSubmission
+    ? "Your multiplier is on the table."
+    : open
+      ? "Turn your sharpest quarter bet into a multiplier."
+      : "The next multiplier cycle is taking shape.";
+  const heroLead = hasSubmission
+    ? `Your latest version for ${cycleLabel} is saved. Track approvals, respond if rework comes in, and keep the business case crisp as it moves forward.`
+    : open
+      ? "Pick one outcome that can move the business, anchor it to a real baseline, and write the target clearly enough that approval feels easy."
+      : cycle.upcoming_text || "Applications are closed for now. The next cycle will appear here when it opens.";
+  const ticketDetail = hasSubmission ? `Latest version v${submission.version_no || 1}` : open ? "Ready when your target is clear" : "Upcoming cycle";
   return `
     <section class="applicant-hero">
       <div class="hero-art" aria-hidden="true">
         <span></span><span></span><span></span><span></span><span></span>
       </div>
       <div class="hero-copy">
-        <p class="eyebrow">Multiplier cycle</p>
-        <h1>Hello potential multiplier, are you ready to dive in?</h1>
-        <p>${hasSubmission ? "Your application is saved. You can come back here to see status, requested changes, and the latest version." : open ? "Capture the target that can move the business, the baseline you are starting from, and the support you need to make it real." : escapeHtml(cycle.upcoming_text)}</p>
+        <p class="eyebrow">${escapeHtml(cycleLabel)} - Multiplier Cycle</p>
+        <h1>${escapeHtml(heroHeadline)}</h1>
+        <p>${escapeHtml(heroLead)}</p>
         <div class="actions">
           <a class="primary hero-cta" href="${actionHref}">${escapeHtml(actionLabel)}</a>
           ${hasSubmission ? `<a class="secondary" href="/status">Approval status</a>` : ""}
         </div>
       </div>
       <div class="hero-ticket">
-        <small>${open ? "Applications open" : "Applications closed"}</small>
-        <b>${escapeHtml(cycle.quarter_label || cycle.name)}</b>
-        <span>${hasSubmission ? `Latest version v${submission.version_no || 1}` : "Not submitted yet"}</span>
+        <small>Multiplier Cycle</small>
+        <b>${escapeHtml(cycleLabel)}</b>
+        <span class="hero-status ${open ? "open" : "closed"}">${open ? "Applications open" : "Applications closed"}</span>
+        <span>${escapeHtml(ticketDetail)}</span>
       </div>
     </section>
 
@@ -1338,27 +1351,28 @@ body.applicant-mode main{
 }
 .applicant-hero{
   position:relative;
-  min-height:430px;
+  min-height:500px;
   display:grid;
-  grid-template-columns:minmax(0,1fr) minmax(230px,310px);
-  gap:28px;
-  align-items:end;
+  grid-template-columns:minmax(0,1fr) minmax(250px,330px);
+  gap:64px;
+  align-items:center;
   border:1px solid #d5e6df;
   border-radius:8px;
   background:
-    linear-gradient(135deg,rgba(15,59,53,.94),rgba(22,120,95,.88)),
+    linear-gradient(135deg,rgba(15,59,53,.98),rgba(22,120,95,.9)),
     #0f3b35;
   box-shadow:var(--shadow);
-  margin-bottom:18px;
-  padding:42px;
+  margin-bottom:24px;
+  padding:64px;
   overflow:hidden;
+  animation:heroIn .72s cubic-bezier(.2,.8,.2,1) both;
 }
 .applicant-hero:after{
   content:"";
   position:absolute;
-  right:28px;
-  top:26px;
-  bottom:26px;
+  right:42px;
+  top:38px;
+  bottom:38px;
   width:1px;
   background:rgba(255,255,255,.18);
 }
@@ -1367,30 +1381,45 @@ body.applicant-mode main{
 .hero-copy h1{
   margin:0;
   color:#fff;
-  font-size:54px;
-  line-height:1.02;
+  font-size:58px;
+  line-height:1.04;
   letter-spacing:0;
-  max-width:780px;
+  max-width:830px;
 }
-.hero-copy p{margin:16px 0 0;color:#e6f2ed;font-size:18px;max-width:680px}
+.hero-copy p{margin:22px 0 0;color:#e6f2ed;font-size:19px;line-height:1.55;max-width:730px}
+.hero-copy .actions{margin-top:30px}
 .hero-cta{min-height:46px;padding-inline:18px}
 .hero-ticket{
   position:relative;
   z-index:1;
   display:grid;
-  gap:8px;
+  gap:12px;
+  align-content:center;
+  min-height:220px;
   color:#fff;
   border-left:1px solid rgba(255,255,255,.22);
-  padding-left:24px;
+  padding-left:38px;
+  animation:riseIn .78s cubic-bezier(.2,.8,.2,1) .08s both;
 }
 .hero-ticket small{color:#bfe2d6;font-weight:850;text-transform:uppercase;font-size:12px}
-.hero-ticket b{font-size:30px;line-height:1.06}
+.hero-ticket b{font-size:36px;line-height:1.04}
 .hero-ticket span{color:#d8eee6}
+.hero-status{
+  width:max-content;
+  max-width:100%;
+  border:1px solid rgba(255,255,255,.24);
+  border-radius:999px;
+  padding:6px 10px;
+  font-size:13px;
+  font-weight:850;
+}
+.hero-status.open{background:rgba(255,255,255,.12);color:#ecfff8}
+.hero-status.closed{background:rgba(255,209,102,.14);color:#fff1be}
 .hero-art{
   position:absolute;
   inset:0;
   pointer-events:none;
-  opacity:.22;
+  opacity:.26;
 }
 .hero-art span{
   position:absolute;
@@ -1398,12 +1427,28 @@ body.applicant-mode main{
   height:2px;
   border-radius:999px;
   background:#fff;
+  animation:lineFloat 8s ease-in-out infinite alternate;
 }
-.hero-art span:nth-child(1){right:80px;top:72px}
-.hero-art span:nth-child(2){right:190px;top:130px;width:64px}
-.hero-art span:nth-child(3){left:52px;bottom:72px;width:150px}
-.hero-art span:nth-child(4){right:42px;bottom:96px;width:190px}
-.hero-art span:nth-child(5){left:45%;top:48px;width:84px}
+.hero-art span:nth-child(1){right:132px;top:72px}
+.hero-art span:nth-child(2){right:268px;top:152px;width:64px;animation-delay:-2s}
+.hero-art span:nth-child(3){left:64px;bottom:94px;width:150px;animation-delay:-4s}
+.hero-art span:nth-child(4){right:72px;bottom:112px;width:190px;animation-delay:-1s}
+.hero-art span:nth-child(5){left:45%;top:70px;width:84px;animation-delay:-3s}
+@keyframes heroIn{
+  from{opacity:0;transform:translateY(14px)}
+  to{opacity:1;transform:translateY(0)}
+}
+@keyframes riseIn{
+  from{opacity:0;transform:translateY(18px)}
+  to{opacity:1;transform:translateY(0)}
+}
+@keyframes lineFloat{
+  from{opacity:.42;transform:translate3d(-10px,-3px,0)}
+  to{opacity:.9;transform:translate3d(12px,4px,0)}
+}
+@media(prefers-reduced-motion:reduce){
+  .applicant-hero,.hero-ticket,.hero-art span{animation:none}
+}
 .experience-path{
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
@@ -2049,9 +2094,10 @@ td b{font-weight:850}
   .metrics,.workflow-progress,.journey,.stage-board,.experience-path{grid-template-columns:repeat(2,minmax(0,1fr))}
   .ops-strip{grid-template-columns:1fr}
   .welcome-band,.cockpit-band,.applicant-hero{grid-template-columns:1fr}
+  .applicant-hero{gap:36px;min-height:auto;padding:46px}
   .welcome-status{justify-self:stretch}
   .applicant-hero:after{display:none}
-  .hero-ticket{border-left:0;padding-left:0;max-width:360px}
+  .hero-ticket{border-left:0;padding-left:0;max-width:420px;min-height:auto}
   .form-cover{grid-template-columns:1fr}
   .form-cover-meta{border-left:0;border-top:1px solid var(--line);padding:18px 0 0}
 }
