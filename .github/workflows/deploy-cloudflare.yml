@@ -54,10 +54,20 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy
           secrets: |
+            ADMIN_EMAILS
+            ORG_EMAIL_DOMAIN
+            GMAIL_SENDER
             GMAIL_CLIENT_ID
             GMAIL_CLIENT_SECRET
             GMAIL_REFRESH_TOKEN
+            FUNCTION_ROUTES_JSON
+            TEAM1_MANAGERS_JSON
         env:
+          ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
+          ORG_EMAIL_DOMAIN: ${{ secrets.ORG_EMAIL_DOMAIN }}
+          GMAIL_SENDER: ${{ secrets.GMAIL_SENDER }}
           GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
           GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
           GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
+          FUNCTION_ROUTES_JSON: ${{ secrets.FUNCTION_ROUTES_JSON }}
+          TEAM1_MANAGERS_JSON: ${{ secrets.TEAM1_MANAGERS_JSON }}

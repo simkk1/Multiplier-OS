@@ -1,5 +1,5 @@
 import { createTask, getCycle, getLatestSubmissions, isTeam1Manager, listRoutes } from "./db.js";
-import { SENDER_EMAIL } from "./constants.js";
+import { DEFAULT_SENDER_EMAIL } from "./constants.js";
 import { classifyReply, createGmailDraft, extractMessage, getThread, gmailConfigured, sendGmail } from "./email.js";
 import { addHours, baseUrl, clean, flagLabels, newToken, norm, nowIso, rowData, safeJsonParse } from "./util.js";
 
@@ -549,7 +549,7 @@ export async function syncGmailReplies(env, cycle) {
     const names = items.map((item) => item.applicant_name);
     for (const message of thread.messages || []) {
       const parsed = extractMessage(message);
-      if (!parsed.id || parsed.id === request.gmail_message_id || norm(parsed.from).includes(norm(env.GMAIL_SENDER || SENDER_EMAIL))) {
+      if (!parsed.id || parsed.id === request.gmail_message_id || norm(parsed.from).includes(norm(env.GMAIL_SENDER || DEFAULT_SENDER_EMAIL))) {
         continue;
       }
       const exists = await env.DB.prepare("SELECT id FROM email_events WHERE gmail_message_id = ?").bind(parsed.id).first();

@@ -1,4 +1,4 @@
-import { SENDER_EMAIL } from "./constants.js";
+import { DEFAULT_SENDER_EMAIL } from "./constants.js";
 import { clean, norm } from "./util.js";
 
 export function gmailConfigured(env) {
@@ -8,7 +8,7 @@ export function gmailConfigured(env) {
 export async function sendGmail(env, { to, cc = "", subject, body, threadId = "" }) {
   const token = await gmailAccessToken(env);
   const raw = buildRawEmail({
-    from: env.GMAIL_SENDER || SENDER_EMAIL,
+    from: env.GMAIL_SENDER || DEFAULT_SENDER_EMAIL,
     to,
     cc,
     subject,
@@ -32,7 +32,7 @@ export async function sendGmail(env, { to, cc = "", subject, body, threadId = ""
 export async function createGmailDraft(env, { to, cc = "", subject, body, threadId = "" }) {
   const token = await gmailAccessToken(env);
   const raw = buildRawEmail({
-    from: env.GMAIL_SENDER || SENDER_EMAIL,
+    from: env.GMAIL_SENDER || DEFAULT_SENDER_EMAIL,
     to,
     cc,
     subject,

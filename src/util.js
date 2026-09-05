@@ -1,4 +1,4 @@
-import { ADMIN_EMAIL, MATERIAL_FIELDS, OBJECTIVE_FLAG_COPY, REQUIRED_FIELDS } from "./constants.js";
+import { DEFAULT_ADMIN_EMAIL, DEFAULT_ORG_EMAIL_DOMAIN, MATERIAL_FIELDS, OBJECTIVE_FLAG_COPY, REQUIRED_FIELDS } from "./constants.js";
 
 export function nowIso() {
   return new Date().toISOString();
@@ -80,21 +80,22 @@ export async function readUser(request, env, ctx) {
     }
   }
   if (!email && env.ALLOW_DEV_AUTH === "true") {
-    email = env.DEV_USER_EMAIL || ADMIN_EMAIL;
+    email = env.DEV_USER_EMAIL || DEFAULT_ADMIN_EMAIL;
     id = "dev-user";
-    name = env.DEV_USER_NAME || "Simar Kaler";
+    name = env.DEV_USER_NAME || "Admin User";
   }
   const emailNorm = norm(email);
-  const admins = String(env.ADMIN_EMAILS || ADMIN_EMAIL)
+  const admins = String(env.ADMIN_EMAILS || DEFAULT_ADMIN_EMAIL)
     .split(",")
     .map(norm)
     .filter(Boolean);
+  const orgDomain = norm(env.ORG_EMAIL_DOMAIN || DEFAULT_ORG_EMAIL_DOMAIN).replace(/^@/, "");
   return {
     id,
     email,
     emailNorm,
     name: name || email.split("@")[0] || "Multiplier",
-    isMosaic: emailNorm.endsWith("@mosaicwellness.in"),
+    isMosaic: orgDomain ? emailNorm.endsWith(`@${orgDomain}`) : false,
     isAdmin: admins.includes(emailNorm),
   };
 }
@@ -117,7 +118,7 @@ export function requireMosaic(user, cycle) {
   if (cycle?.allow_public_test_mode) {
     return null;
   }
-  return html(`<main style="font-family:system-ui;padding:32px"><h1>Mosaic login needed</h1><p>Use a mosaicwellness.in account.</p></main>`, { status: 401 });
+  return html(`<main style="font-family:system-ui;padding:32px"><h1>Company login needed</h1><p>Use your company Google account.</p></main>`, { status: 401 });
 }
 
 export function requireAdmin(user) {

@@ -12,16 +12,14 @@
     ]
   },
   "vars": {
-    "ADMIN_EMAILS": "simar.kaler@mosaicwellness.in",
-    "GMAIL_SENDER": "multipliers@mosaicwellness.in",
     "ALLOW_DEV_AUTH": "false"
   },
   "access": {
     "dev": {
       "aud": "multipliers-os-local-dev",
       "identity": {
-        "email": "simar.kaler@mosaicwellness.in",
-        "name": "Simar Kaler"
+        "email": "admin@example.com",
+        "name": "Admin User"
       }
     }
   },

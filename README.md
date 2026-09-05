@@ -4,7 +4,7 @@ Phase 1 backend-first build.
 
 This is a Cloudflare Worker app with D1 as source of truth. It handles:
 
-- Mosaic-login applicant form with prefilled locked name/email from auth headers.
+- Company-login applicant form with prefilled locked name/email from auth headers.
 - Versioned submissions by applicant email, latest-only admin views, full audit/history.
 - Admin cycle controls, cohort edit access, route settings, undo/restore by version.
 - Objective blocker flags and material-edit manager recheck rules.
@@ -21,8 +21,9 @@ This is a Cloudflare Worker app with D1 as source of truth. It handles:
   - `GMAIL_CLIENT_ID`
   - `GMAIL_CLIENT_SECRET`
   - `GMAIL_REFRESH_TOKEN`
-  - `GMAIL_SENDER=multipliers@mosaicwellness.in`
-  - `ADMIN_EMAILS=simar.kaler@mosaicwellness.in`
+  - `GMAIL_SENDER`
+  - `ADMIN_EMAILS`
+  - `ORG_EMAIL_DOMAIN`
 
 ## Build
 
@@ -50,7 +51,8 @@ Production deploys through GitHub Actions to Cloudflare Workers. See `CLOUDFLARE
 
 ## Notes
 
-- Live access is server-side restricted to `@mosaicwellness.in`; admin is allowlisted.
+- Live access is server-side restricted to the configured company email domain; admins are allowlisted with `ADMIN_EMAILS`.
+- Function routes and Team 1 manager lists are private runtime/admin data, not committed source.
 - Public test mode is available only when admin enables it for a cycle or env permits dev auth.
 - Sub department is optional. All other applicant fields are required by default.
 - The Worker includes a `scheduled` handler for Gmail sync, reminders/escalations, and the 8:00 AM admin digest; hosting must attach an appropriate cron/trigger.

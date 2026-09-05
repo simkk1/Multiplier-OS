@@ -1,4 +1,4 @@
-import { ADMIN_EMAIL, FUNCTION_ROUTES, TEAM1_MANAGERS } from "./constants.js";
+import { DEFAULT_ADMIN_EMAIL } from "./constants.js";
 import { createGmailDraft, gmailConfigured } from "./email.js";
 import {
   addHours,
@@ -20,7 +20,7 @@ export async function ensureBoot(env) {
       `INSERT INTO cycles (name, quarter_label, close_at, admin_email)
        VALUES (?, ?, ?, ?)`
     )
-      .bind("JAS'26", "JAS'26", addHours(nowIso(), 168), ADMIN_EMAIL)
+      .bind("Current cycle", "Current cycle", addHours(nowIso(), 168), primaryAdminEmail(env))
       .run();
   }
   const cycle = await getCycle(env);
@@ -28,27 +28,70 @@ export async function ensureBoot(env) {
     .bind(cycle.id)
     .first();
   if (!routes.count) {
-    const statements = FUNCTION_ROUTES.map((route, index) =>
+    const seedRoutes = bootstrapRoutes(env);
+    const statements = seedRoutes.map((route, index) =>
       env.DB.prepare(
         `INSERT INTO routing_rules (cycle_id, department, sub_department, owner_name, owner_email, sort_order)
          VALUES (?, ?, ?, ?, ?, ?)`
-      ).bind(cycle.id, route.department, route.sub_department || "", route.owner_name, "", index)
+      ).bind(cycle.id, route.department, route.sub_department || "", route.owner_name, route.owner_email || "", index)
     );
-    await env.DB.batch(statements);
+    if (statements.length) {
+      await env.DB.batch(statements);
+    }
   }
   const team1 = await env.DB.prepare("SELECT COUNT(*) AS count FROM team1_managers WHERE cycle_id = ?")
     .bind(cycle.id)
     .first();
   if (!team1.count) {
-    const statements = TEAM1_MANAGERS.map((name) =>
+    const seedManagers = bootstrapTeam1Managers(env);
+    const statements = seedManagers.map((manager) =>
       env.DB.prepare(
         `INSERT INTO team1_managers (cycle_id, manager_name, manager_name_norm, manager_email, manager_email_norm)
          VALUES (?, ?, ?, ?, ?)`
-      ).bind(cycle.id, name, norm(name), "", "")
+      ).bind(cycle.id, manager.name, norm(manager.name), manager.email || "", norm(manager.email || ""))
     );
-    await env.DB.batch(statements);
+    if (statements.length) {
+      await env.DB.batch(statements);
+    }
   }
   return cycle;
+}
+
+function primaryAdminEmail(env) {
+  return String(env.ADMIN_EMAILS || DEFAULT_ADMIN_EMAIL)
+    .split(",")
+    .map(clean)
+    .filter(Boolean)[0] || DEFAULT_ADMIN_EMAIL;
+}
+
+function bootstrapRoutes(env) {
+  const parsed = safeJsonParse(env.FUNCTION_ROUTES_JSON, []);
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+  return parsed
+    .map((route) => ({
+      department: clean(route?.department),
+      sub_department: clean(route?.sub_department),
+      owner_name: clean(route?.owner_name),
+      owner_email: clean(route?.owner_email),
+    }))
+    .filter((route) => route.department && route.owner_name);
+}
+
+function bootstrapTeam1Managers(env) {
+  const parsed = safeJsonParse(env.TEAM1_MANAGERS_JSON, []);
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+  return parsed
+    .map((manager) => {
+      if (typeof manager === "string") {
+        return { name: clean(manager), email: "" };
+      }
+      return { name: clean(manager?.name), email: clean(manager?.email) };
+    })
+    .filter((manager) => manager.name);
 }
 
 export async function getCycle(env) {
@@ -644,13 +687,37 @@ export async function updateRouteEmails(env, cycleId, input, actor) {
   const routes = await listRoutes(env, cycleId);
   const statements = [];
   for (const route of routes) {
-    const email = clean(input[`route_${route.id}`]);
-    statements.push(env.DB.prepare("UPDATE routing_rules SET owner_email = ? WHERE id = ? AND cycle_id = ?").bind(email, route.id, cycleId));
+    const department = clean(input[`route_department_${route.id}`]) || route.department;
+    const subDepartment = clean(input[`route_sub_department_${route.id}`]);
+    const ownerName = clean(input[`route_owner_name_${route.id}`]) || route.owner_name;
+    const email = clean(input[`route_owner_email_${route.id}`]);
+    const active = parseBool(input[`route_active_${route.id}`]) ? 1 : 0;
+    statements.push(
+      env.DB.prepare(
+        "UPDATE routing_rules SET department = ?, sub_department = ?, owner_name = ?, owner_email = ?, active = ? WHERE id = ? AND cycle_id = ?"
+      ).bind(department, subDepartment, ownerName, email, active, route.id, cycleId)
+    );
   }
   if (statements.length) {
     await env.DB.batch(statements);
   }
   await audit(env, cycleId, actor, "routes", cycleId, "route_emails_updated", null, JSON.stringify(input));
+}
+
+export async function addRoute(env, cycleId, input, actor) {
+  const department = clean(input.department);
+  const ownerName = clean(input.owner_name);
+  if (!department || !ownerName) {
+    throw new Error("Department and owner name are required");
+  }
+  const result = await env.DB.prepare(
+    `INSERT INTO routing_rules (cycle_id, department, sub_department, owner_name, owner_email, active, sort_order)
+     VALUES (?, ?, ?, ?, ?, 1, ?)`
+  )
+    .bind(cycleId, department, clean(input.sub_department), ownerName, clean(input.owner_email), Date.now())
+    .run();
+  await audit(env, cycleId, actor, "routes", result.meta.last_row_id, "route_added", null, JSON.stringify(input));
+  return result.meta.last_row_id;
 }
 
 export async function listTeam1(env, cycleId) {
@@ -660,6 +727,26 @@ export async function listTeam1(env, cycleId) {
     .bind(cycleId)
     .all();
   return rows.results || [];
+}
+
+export async function addTeam1Manager(env, cycleId, input, actor) {
+  const name = clean(input.manager_name);
+  if (!name) {
+    throw new Error("Manager name is required");
+  }
+  const email = clean(input.manager_email);
+  const result = await env.DB.prepare(
+    `INSERT INTO team1_managers (cycle_id, manager_name, manager_name_norm, manager_email, manager_email_norm, active)
+     VALUES (?, ?, ?, ?, ?, 1)
+     ON CONFLICT(cycle_id, manager_name_norm) DO UPDATE SET
+       manager_email = excluded.manager_email,
+       manager_email_norm = excluded.manager_email_norm,
+       active = 1`
+  )
+    .bind(cycleId, name, norm(name), email, norm(email))
+    .run();
+  await audit(env, cycleId, actor, "team1", cycleId, "team1_manager_added", null, JSON.stringify(input));
+  return result.meta.last_row_id;
 }
 
 export async function saveSnapshot(env, cycleId, label, actor) {

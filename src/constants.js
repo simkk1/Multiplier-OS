@@ -1,47 +1,6 @@
-export const ADMIN_EMAIL = "simar.kaler@mosaicwellness.in";
-export const SENDER_EMAIL = "multipliers@mosaicwellness.in";
-
-export const DEPARTMENTS = [
-  "Man Matters",
-  "BeBodywise",
-  "Little Joys",
-  "Root Labs",
-  "Absolute Science",
-  "OWN",
-  "Tech",
-  "Finance",
-  "HR",
-  "Marketplace",
-  "Admin",
-  "Supply Chain",
-  "NPD",
-  "Quality",
-  "Legal",
-  "CEO's Office",
-  "CoE",
-  "Offline",
-];
-
-export const SUB_DEPARTMENTS = [
-  "Performance Mkt",
-  "Content",
-  "Product Design",
-  "Product Manager",
-  "Category",
-  "Product Engineer",
-  "TA",
-  "HRBP",
-  "NPD Innovation",
-  "NPD R&D",
-  "NPD Packaging & Development",
-  "Tech product",
-  "Tech non product",
-  "Operations",
-  "Retention",
-  "Marketplace P&L",
-  "Social Media",
-  "Analytics",
-];
+export const DEFAULT_ADMIN_EMAIL = "admin@example.com";
+export const DEFAULT_SENDER_EMAIL = "multipliers@example.com";
+export const DEFAULT_ORG_EMAIL_DOMAIN = "example.com";
 
 export const REQUIRED_FIELDS = [
   "applicant_name",
@@ -63,54 +22,6 @@ export const MATERIAL_FIELDS = [
   "multiplier_target",
   "baseline",
   "aop",
-];
-
-export const TEAM1_MANAGERS = [
-  "Revant Bhate",
-  "Dhyanesh Shah",
-  "Rakesh Mohite",
-  "Neha Kamat",
-  "Pratik Limje",
-  "Geet Rathi",
-  "Mohnish Karjodkar",
-  "Abhinav Gupta",
-  "Pravin Devanathan",
-  "Nandini Raghavan",
-  "Sachin Singla",
-  "Tarun Talwar",
-  "Mayank Kumar",
-  "Rohit Ganapathi",
-  "Mridul Muralidharan",
-  "Ashutosh Shrivastava",
-  "Vaibhav Joneja",
-  "Pratish Bal",
-  "Subhro Sengupta",
-  "Shouvik Ghosh Roy",
-  "Shashank Upadhyay",
-];
-
-export const FUNCTION_ROUTES = [
-  { department: "Finance", sub_department: "", owner_name: "Dhyanesh Shah" },
-  { department: "CEO's Office", sub_department: "", owner_name: "Revant Bhate" },
-  { department: "Little Joys", sub_department: "", owner_name: "Revant Bhate" },
-  { department: "HR", sub_department: "", owner_name: "Revant Bhate" },
-  { department: "OWN", sub_department: "", owner_name: "Revant Bhate" },
-  { department: "Man Matters", sub_department: "", owner_name: "Geet Rathi" },
-  { department: "BeBodywise", sub_department: "", owner_name: "Mohnish Karjodkar" },
-  { department: "NPD", sub_department: "", owner_name: "Abhinav Gupta" },
-  { department: "Supply Chain", sub_department: "", owner_name: "Pravin Devanathan" },
-  { department: "Offline", sub_department: "", owner_name: "Ashutosh Shrivastava" },
-  { department: "Tech", sub_department: "", owner_name: "Shouvik Ghosh Roy" },
-  { department: "Marketplace", sub_department: "", owner_name: "Vaibhav Joneja" },
-  { department: "CEO's Office", sub_department: "Marketplace P&L", owner_name: "Vaibhav Joneja" },
-  { department: "Absolute Science", sub_department: "", owner_name: "Mridul Muralidharan" },
-  { department: "Absolute Science", sub_department: "", owner_name: "Shouvik Ghosh Roy" },
-  { department: "Man Matters", sub_department: "Performance Mkt", owner_name: "Sachin Singla" },
-  { department: "Man Matters", sub_department: "Retention", owner_name: "Tarun Talwar" },
-  { department: "Man Matters", sub_department: "Content", owner_name: "Nandini Raghavan" },
-  { department: "Man Matters", sub_department: "Social Media", owner_name: "Nandini Raghavan" },
-  { department: "USA", sub_department: "", owner_name: "Mayank Kumar" },
-  { department: "UAE", sub_department: "", owner_name: "Rohit Ganapathi" },
 ];
 
 export const STATUS_LABELS = {

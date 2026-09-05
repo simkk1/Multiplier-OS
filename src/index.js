@@ -2,6 +2,8 @@ import {
   auditForEntity,
   auditList,
   completeTask,
+  addRoute,
+  addTeam1Manager,
   dashboardStats,
   deptSplit,
   ensureBoot,
@@ -82,9 +84,9 @@ async function route(request, env, cycle, ctx) {
     return reviewRoute(request, env, cycle, reviewMatch[1]);
   }
 
-  const mosaicBlock = requireMosaic(user, cycle);
-  if (mosaicBlock) {
-    return mosaicBlock;
+  const companyLoginBlock = requireMosaic(user, cycle);
+  if (companyLoginBlock) {
+    return companyLoginBlock;
   }
 
   if (path === "/" && request.method === "GET") {
@@ -211,7 +213,7 @@ async function adminRoute(request, env, cycle, user) {
   if (approvalSend && request.method === "POST") {
     const data = await formData(request);
     const mode = approvalSend[2] === "draft" ? "draft" : "send";
-    const testTo = approvalSend[2] === "test" ? data.test_to || "simar.kaler@gmail.com" : "";
+    const testTo = approvalSend[2] === "test" ? data.test_to || cycle.admin_email : "";
     await sendOrDraftRequest(env, cycle, Number(approvalSend[1]), mode, testTo);
     return redirect("/admin/approvals");
   }
@@ -228,6 +230,16 @@ async function adminRoute(request, env, cycle, user) {
 
   if (path === "/admin/routes" && request.method === "POST") {
     await updateRouteEmails(env, cycle.id, await formData(request), user.email);
+    return redirect("/admin/routes");
+  }
+
+  if (path === "/admin/routes/add" && request.method === "POST") {
+    await addRoute(env, cycle.id, await formData(request), user.email);
+    return redirect("/admin/routes");
+  }
+
+  if (path === "/admin/team1/add" && request.method === "POST") {
+    await addTeam1Manager(env, cycle.id, await formData(request), user.email);
     return redirect("/admin/routes");
   }
 

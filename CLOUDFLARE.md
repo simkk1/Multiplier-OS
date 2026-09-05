@@ -20,7 +20,7 @@ npx wrangler d1 create multipliers-os-db
 
 Save the returned database id as the GitHub secret `CLOUDFLARE_D1_DATABASE_ID`.
 
-Protect the Worker with Cloudflare Access and allow the `mosaicwellness.in` email domain. The app reads the signed-in user's email from `ctx.access`, so applicant name/email stay locked to login identity.
+Protect the Worker with Cloudflare Access and allow your company email domain. The app reads the signed-in user's email from `ctx.access`, so applicant name/email stay locked to login identity.
 
 ## GitHub Secrets
 
@@ -30,12 +30,19 @@ Add these repository secrets before the first deploy:
 CLOUDFLARE_API_TOKEN
 CLOUDFLARE_ACCOUNT_ID
 CLOUDFLARE_D1_DATABASE_ID
+ADMIN_EMAILS
+ORG_EMAIL_DOMAIN
+GMAIL_SENDER
 GMAIL_CLIENT_ID
 GMAIL_CLIENT_SECRET
 GMAIL_REFRESH_TOKEN
+FUNCTION_ROUTES_JSON
+TEAM1_MANAGERS_JSON
 ```
 
-The Gmail secrets must belong to the `multipliers@mosaicwellness.in` sender setup.
+The Gmail secrets must belong to the sender mailbox you configure with `GMAIL_SENDER`.
+
+`FUNCTION_ROUTES_JSON` and `TEAM1_MANAGERS_JSON` can be `[]` for the first deploy. Admin can also add routes and Team 1 managers in the app after login.
 
 ## Local Commands
 
@@ -52,7 +59,7 @@ For local authenticated testing, use Cloudflare Access dev config or temporarily
 After the first Worker deploy, attach a Cloudflare route or custom domain such as:
 
 ```text
-multipliers.mosaicwellness.in
+multipliers.yourcompany.com
 ```
 
 Then put that hostname behind Cloudflare Access.

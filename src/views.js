@@ -1,4 +1,4 @@
-import { DEPARTMENTS, STATUS_LABELS, SUB_DEPARTMENTS } from "./constants.js";
+import { STATUS_LABELS } from "./constants.js";
 import { escapeAttr, escapeHtml, flagLabels, inputDateTime, localStamp, rowData, safeJsonParse } from "./util.js";
 
 export function layout({ title, user, cycle, active = "home", content }) {
@@ -124,8 +124,8 @@ export function applicantForm({ user, cycle, submission, error = "" }) {
         ${lockedField("Email", "applicant_email", data.applicant_email || user.email)}
         ${field("Manager name", "manager_name", data.manager_name, "text", canEdit, true)}
         ${field("Manager email", "manager_email", data.manager_email, "email", canEdit, true)}
-        ${selectField("Department", "department", data.department, DEPARTMENTS, canEdit, true)}
-        ${selectField("Sub department", "sub_department", data.sub_department, SUB_DEPARTMENTS, canEdit, false)}
+        ${field("Department", "department", data.department, "text", canEdit, true)}
+        ${field("Sub department", "sub_department", data.sub_department, "text", canEdit, false)}
         ${textarea("Regular OKR", "regular_okr", data.regular_okr, canEdit, true)}
         ${textarea("Multiplier target", "multiplier_target", data.multiplier_target, canEdit, true)}
         ${textarea("Baseline", "baseline", data.baseline, canEdit, true)}
@@ -252,7 +252,7 @@ export function adminSubmissions({ rows, filters }) {
     <section class="panel">
       <form class="filters" method="get" action="/admin/submissions">
         <input type="search" name="q" placeholder="Search name, email, manager, OKR" value="${escapeAttr(filters.q || "")}">
-        <select name="department"><option value="">All departments</option>${DEPARTMENTS.map((d) => option(d, filters.department, d)).join("")}</select>
+        <input type="search" name="department" placeholder="Department" value="${escapeAttr(filters.department || "")}">
         <select name="status"><option value="">All statuses</option>${["pending", "approved", "recheck_needed", "rework", "rejected", "skipped", "finalized", "needs_admin_review"].map((s) => option(s, filters.status, s)).join("")}</select>
         <button class="secondary">Filter</button>
       </form>
@@ -295,8 +295,8 @@ function adminEditForm(row, data) {
     ${field("Applicant email", "applicant_email", data.applicant_email, "email", true, true)}
     ${field("Manager name", "manager_name", data.manager_name, "text", true, true)}
     ${field("Manager email", "manager_email", data.manager_email, "email", true, true)}
-    ${selectField("Department", "department", data.department, DEPARTMENTS, true, true)}
-    ${selectField("Sub department", "sub_department", data.sub_department, SUB_DEPARTMENTS, true, false)}
+    ${field("Department", "department", data.department, "text", true, true)}
+    ${field("Sub department", "sub_department", data.sub_department, "text", true, false)}
     ${textarea("Regular OKR", "regular_okr", data.regular_okr, true, true)}
     ${textarea("Multiplier target", "multiplier_target", data.multiplier_target, true, true)}
     ${textarea("Baseline", "baseline", data.baseline, true, true)}
@@ -334,7 +334,7 @@ function requestRow(row) {
     <td>${Number(row.item_count || 0)} items<br><span>${Number(row.pending_count || 0)} pending</span></td>
     <td>${localStamp(row.due_at)}</td>
     <td>
-      <form class="mini" method="post" action="/admin/approvals/${row.id}/test"><input name="test_to" value="simar.kaler@gmail.com"><button class="secondary small">Send test</button></form>
+      <form class="mini" method="post" action="/admin/approvals/${row.id}/test"><input name="test_to" placeholder="test@example.com"><button class="secondary small">Send test</button></form>
       <form class="mini" method="post" action="/admin/approvals/${row.id}/send"><button class="primary small">Send live</button></form>
       <form class="mini" method="post" action="/admin/approvals/${row.id}/draft"><button class="secondary small">Create draft</button></form>
     </td>
@@ -376,14 +376,36 @@ export function routesPage({ routes, team1 }) {
     <header class="top"><div><p class="eyebrow">Routes</p><h1>Function heads and Team 1</h1></div></header>
     <section class="panel">
       <form method="post" action="/admin/routes" class="route-table">
-        <div class="table-wrap"><table><thead><tr><th>Department</th><th>Sub dept</th><th>Owner</th><th>Email</th></tr></thead>
-        <tbody>${routes.map((r) => `<tr><td>${escapeHtml(r.department)}</td><td>${escapeHtml(r.sub_department || "-")}</td><td>${escapeHtml(r.owner_name)}</td><td><input name="route_${r.id}" value="${escapeAttr(r.owner_email || "")}" placeholder="owner@mosaicwellness.in"></td></tr>`).join("")}</tbody></table></div>
-        <button class="primary">Save route emails</button>
+        <div class="section-head"><h2>Function routes</h2><span class="muted">Used for function-head approval emails</span></div>
+        <div class="table-wrap"><table><thead><tr><th>Department</th><th>Sub dept</th><th>Owner</th><th>Email</th><th>Active</th></tr></thead>
+        <tbody>${routes.map((r) => `<tr>
+          <td><input name="route_department_${r.id}" value="${escapeAttr(r.department)}" required></td>
+          <td><input name="route_sub_department_${r.id}" value="${escapeAttr(r.sub_department || "")}" placeholder="Optional"></td>
+          <td><input name="route_owner_name_${r.id}" value="${escapeAttr(r.owner_name)}" required></td>
+          <td><input name="route_owner_email_${r.id}" value="${escapeAttr(r.owner_email || "")}" placeholder="owner@example.com"></td>
+          <td><label class="check"><input type="checkbox" name="route_active_${r.id}" ${r.active ? "checked" : ""}><span>On</span></label></td>
+        </tr>`).join("") || `<tr><td colspan="5">No routes yet.</td></tr>`}</tbody></table></div>
+        <button class="primary">Save routes</button>
+      </form>
+    </section>
+    <section class="panel">
+      <div class="section-head"><h2>Add function route</h2><span class="muted">Department owner for grouped approval</span></div>
+      <form method="post" action="/admin/routes/add" class="form compact">
+        ${field("Department", "department", "", "text", true, true)}
+        ${field("Sub department", "sub_department", "", "text", true, false)}
+        ${field("Owner name", "owner_name", "", "text", true, true)}
+        ${field("Owner email", "owner_email", "", "email", true, false)}
+        <button class="primary full">Add route</button>
       </form>
     </section>
     <section class="panel">
       <div class="section-head"><h2>Team 1 managers</h2><span class="muted">Applicants under these managers skip manager mail</span></div>
-      <div class="chips">${team1.map((m) => `<span class="tag">${escapeHtml(m.manager_name)}</span>`).join("")}</div>
+      <div class="chips">${team1.map((m) => `<span class="tag">${escapeHtml(m.manager_name)}${m.manager_email ? ` · ${escapeHtml(m.manager_email)}` : ""}</span>`).join("") || `<span class="muted">No Team 1 managers yet.</span>`}</div>
+      <form method="post" action="/admin/team1/add" class="inline route-add">
+        <input name="manager_name" placeholder="Manager name" required>
+        <input name="manager_email" placeholder="manager@example.com">
+        <button class="secondary">Add Team 1 manager</button>
+      </form>
     </section>`;
 }
 
@@ -474,10 +496,6 @@ function field(label, name, value, type, enabled, required) {
 
 function textarea(label, name, value, enabled, required) {
   return `<label class="full"><span>${escapeHtml(label)}${required ? " *" : ""}</span><textarea name="${name}" ${enabled ? "" : "readonly"} ${required ? "required" : ""}>${escapeHtml(value || "")}</textarea></label>`;
-}
-
-function selectField(label, name, value, options, enabled, required) {
-  return `<label><span>${escapeHtml(label)}${required ? " *" : ""}</span><select name="${name}" ${enabled ? "" : "disabled"} ${required ? "required" : ""}><option value="">Select</option>${options.map((item) => option(item, value, item)).join("")}</select></label>`;
 }
 
 function option(value, current, label) {

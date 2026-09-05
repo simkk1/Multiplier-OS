@@ -12,7 +12,7 @@ CREATE TABLE cycles (
   function_due_hours INTEGER NOT NULL DEFAULT 48,
   function_reminder_hours INTEGER NOT NULL DEFAULT 24,
   daily_digest_time TEXT NOT NULL DEFAULT '08:00',
-  admin_email TEXT NOT NULL DEFAULT 'simar.kaler@mosaicwellness.in',
+  admin_email TEXT NOT NULL DEFAULT 'admin@example.com',
   aop_required INTEGER NOT NULL DEFAULT 1,
   allow_public_test_mode INTEGER NOT NULL DEFAULT 0,
   manager_rework_send_mode TEXT NOT NULL DEFAULT 'draft',
