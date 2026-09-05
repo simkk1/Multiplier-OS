@@ -1,0 +1,6 @@
+.env
+.tools/
+node_modules/
+*.zip
+*.7z.exe
+*.tar.gz
