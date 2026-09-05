@@ -44,6 +44,7 @@ export function layout({ title, user, cycle, active = "home", content }) {
         <small>Signed in</small>
         <b>${escapeHtml(user.name)}</b>
         <span>${escapeHtml(user.email)}</span>
+        ${user.isTestUser ? `<form method="post" action="/test-logout"><button class="side-button">Switch test profile</button></form>` : ""}
       </div>
     </aside>
     <main>
@@ -759,6 +760,17 @@ nav a.active{background:#ffffff;color:#142033;box-shadow:0 10px 24px rgba(0,0,0,
 .cycle-card b,.who b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cycle-card span,.who span{color:#cbd6e2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .who{margin-top:auto}
+.side-button{
+  width:100%;
+  margin-top:8px;
+  min-height:32px;
+  border:1px solid rgba(255,255,255,.20);
+  background:rgba(255,255,255,.08);
+  color:#fff;
+  border-radius:7px;
+  padding:6px 8px;
+  font-size:13px;
+}
 .muted,td span,li span{color:var(--muted)}
 main{min-width:0;padding:28px;max-width:1480px;width:100%;margin:0 auto}
 .top{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:20px}

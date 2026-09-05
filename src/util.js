@@ -1,4 +1,4 @@
-import { DEFAULT_ADMIN_EMAIL, DEFAULT_ORG_EMAIL_DOMAIN, MATERIAL_FIELDS, OBJECTIVE_FLAG_COPY, REQUIRED_FIELDS } from "./constants.js";
+import { MATERIAL_FIELDS, OBJECTIVE_FLAG_COPY, REQUIRED_FIELDS } from "./constants.js";
 
 export function nowIso() {
   return new Date().toISOString();
@@ -60,72 +60,6 @@ export async function formData(request) {
     out[key] = clean(value);
   }
   return out;
-}
-
-export async function readUser(request, env, ctx) {
-  const accessIdentity = await readCloudflareAccessIdentity(ctx);
-  let email = clean(accessIdentity?.email) || request.headers.get("oai-authenticated-user-email") || "";
-  let id = clean(accessIdentity?.user_uuid || accessIdentity?.sub || accessIdentity?.id) || request.headers.get("oai-authenticated-user-id") || "";
-  let name = "";
-  if (accessIdentity?.name) {
-    name = clean(accessIdentity.name);
-  }
-  const rawName = request.headers.get("oai-authenticated-user-full-name") || "";
-  const nameEncoding = request.headers.get("oai-authenticated-user-full-name-encoding") || "";
-  if (!name && rawName && nameEncoding === "percent-encoded-utf-8") {
-    try {
-      name = decodeURIComponent(rawName);
-    } catch {
-      name = "";
-    }
-  }
-  if (!email && env.ALLOW_DEV_AUTH === "true") {
-    email = env.DEV_USER_EMAIL || DEFAULT_ADMIN_EMAIL;
-    id = "dev-user";
-    name = env.DEV_USER_NAME || "Admin User";
-  }
-  const emailNorm = norm(email);
-  const admins = String(env.ADMIN_EMAILS || DEFAULT_ADMIN_EMAIL)
-    .split(",")
-    .map(norm)
-    .filter(Boolean);
-  const orgDomain = norm(env.ORG_EMAIL_DOMAIN || DEFAULT_ORG_EMAIL_DOMAIN).replace(/^@/, "");
-  return {
-    id,
-    email,
-    emailNorm,
-    name: name || email.split("@")[0] || "Multiplier",
-    isMosaic: orgDomain ? emailNorm.endsWith(`@${orgDomain}`) : false,
-    isAdmin: admins.includes(emailNorm),
-  };
-}
-
-async function readCloudflareAccessIdentity(ctx) {
-  if (!ctx?.access) {
-    return null;
-  }
-  try {
-    return await ctx.access.getIdentity();
-  } catch {
-    return null;
-  }
-}
-
-export function requireMosaic(user, cycle) {
-  if (user.isMosaic || user.isAdmin) {
-    return null;
-  }
-  if (cycle?.allow_public_test_mode) {
-    return null;
-  }
-  return html(`<main style="font-family:system-ui;padding:32px"><h1>Company login needed</h1><p>Use your company Google account.</p></main>`, { status: 401 });
-}
-
-export function requireAdmin(user) {
-  if (user.isAdmin) {
-    return null;
-  }
-  return html(`<main style="font-family:system-ui;padding:32px"><h1>Admin access needed</h1></main>`, { status: 403 });
 }
 
 export function parseBool(value) {

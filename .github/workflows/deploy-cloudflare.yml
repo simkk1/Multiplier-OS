@@ -71,6 +71,18 @@ jobs:
           FUNCTION_ROUTES_JSON: ${{ secrets.FUNCTION_ROUTES_JSON }}
           TEAM1_MANAGERS_JSON: ${{ secrets.TEAM1_MANAGERS_JSON }}
 
+      - name: Set test access secret when available
+        run: |
+          if [ -n "$TEST_AUTH_KEY" ]; then
+            printf '%s' "$TEST_AUTH_KEY" | npx --yes wrangler@latest secret put TEST_AUTH_KEY --config wrangler.jsonc
+          else
+            echo "Skipping TEST_AUTH_KEY; temporary test login will stay disabled."
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TEST_AUTH_KEY: ${{ secrets.TEST_AUTH_KEY }}
+
       - name: Set Gmail OAuth secrets when available
         run: |
           if [ -n "$GMAIL_CLIENT_ID" ] && [ -n "$GMAIL_CLIENT_SECRET" ] && [ -n "$GMAIL_REFRESH_TOKEN" ]; then

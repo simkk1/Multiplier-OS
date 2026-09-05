@@ -25,6 +25,7 @@ import {
   updateCycle,
   updateRouteEmails,
 } from "./db.js";
+import { readUser, requireAdmin, requireMosaic, testAuthRoute } from "./auth.js";
 import {
   listApprovalRequests,
   prepareFunctionRequests,
@@ -52,7 +53,7 @@ import {
   tasksPage,
   submissionDetail,
 } from "./views.js";
-import { formData, html, json, localStamp, readUser, redirect, requireAdmin, requireMosaic, rowData } from "./util.js";
+import { formData, html, json, localStamp, redirect, rowData } from "./util.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -79,6 +80,11 @@ async function route(request, env, cycle, ctx) {
     return json({ ok: true, cycle: cycle.name, gmail: gmailConfigured(env) });
   }
 
+  const testAuth = await testAuthRoute(request, env);
+  if (testAuth) {
+    return testAuth;
+  }
+
   if (path.startsWith("/api/")) {
     return apiRoute(request, env, cycle, user);
   }
@@ -88,7 +94,7 @@ async function route(request, env, cycle, ctx) {
     return reviewRoute(request, env, cycle, reviewMatch[1]);
   }
 
-  const companyLoginBlock = requireMosaic(user, cycle);
+  const companyLoginBlock = requireMosaic(user, cycle, request, env);
   if (companyLoginBlock) {
     return companyLoginBlock;
   }
@@ -129,7 +135,7 @@ async function route(request, env, cycle, ctx) {
   }
 
   if (path.startsWith("/admin")) {
-    const adminBlock = requireAdmin(user);
+    const adminBlock = requireAdmin(user, request, env);
     if (adminBlock) {
       return adminBlock;
     }
@@ -301,7 +307,7 @@ async function reviewRoute(request, env, cycle, token) {
 }
 
 async function apiRoute(request, env, cycle, user) {
-  const adminBlock = requireAdmin(user);
+  const adminBlock = requireAdmin(user, request, env);
   if (adminBlock) {
     return json({ error: "Admin access needed" }, { status: 403 });
   }

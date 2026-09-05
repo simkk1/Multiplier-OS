@@ -1,6 +1,7 @@
 .env
 .dev.vars
 .cloudflare-secrets.json
+.test-access-code.txt
 .openai/
 .wrangler/
 .tools/

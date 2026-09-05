@@ -20,7 +20,9 @@ npx wrangler d1 create multipliers-os-db
 
 Save the returned database id as the GitHub secret `CLOUDFLARE_D1_DATABASE_ID`.
 
-Protect the Worker with Cloudflare Access and allow your company email domain. The app reads the signed-in user's email from `ctx.access`, so applicant name/email stay locked to login identity.
+For production, protect the Worker with Cloudflare Access and allow your company email domain. The app reads the signed-in user's email from `ctx.access`, so applicant name/email stay locked to login identity.
+
+During the test phase, set `ALLOW_TEST_AUTH=true` in `wrangler.jsonc` and configure the GitHub secret `TEST_AUTH_KEY`. The app will show `/test-login` instead of requiring company login. The test gate can open either the admin cockpit or an applicant preview profile.
 
 ## GitHub Secrets
 
@@ -38,6 +40,7 @@ GMAIL_CLIENT_SECRET
 GMAIL_REFRESH_TOKEN
 FUNCTION_ROUTES_JSON
 TEAM1_MANAGERS_JSON
+TEST_AUTH_KEY
 ```
 
 The Gmail secrets must belong to the sender mailbox you configure with `GMAIL_SENDER`.
@@ -52,7 +55,7 @@ npm run check
 npm run dev
 ```
 
-For local authenticated testing, use Cloudflare Access dev config or temporarily set `ALLOW_DEV_AUTH=true` in a local `.dev.vars` file. Do not use dev auth in production.
+For local authenticated testing, use the Cloudflare Access dev config or set `ALLOW_TEST_AUTH=true` with `TEST_AUTH_KEY` in a local `.dev.vars` file.
 
 ## Custom Domain
 

@@ -13,7 +13,8 @@
     ]
   },
   "vars": {
-    "ALLOW_DEV_AUTH": "false"
+    "ALLOW_DEV_AUTH": "false",
+    "ALLOW_TEST_AUTH": "true"
   },
   "access": {
     "dev": {
