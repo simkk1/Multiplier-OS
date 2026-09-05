@@ -7,7 +7,7 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "check": "node --check src/index.js && node --check src/auth.js && node --check src/db.js && node --check src/approvals.js && node --check src/email.js && node --check src/views.js && node --check src/xlsx.js && node --check src/util.js && node --check src/constants.js && node --check src/logo.js && node --check scripts/build.mjs && node --check scripts/patch-wrangler-config.mjs && node --check scripts/gmail-oauth.mjs",
+    "check": "node --check src/index.js && node --check src/auth.js && node --check src/db.js && node --check src/approvals.js && node --check src/email.js && node --check src/views.js && node --check src/applicant-form-definition.js && node --check src/xlsx.js && node --check src/util.js && node --check src/constants.js && node --check src/logo.js && node --check scripts/build.mjs && node --check scripts/patch-wrangler-config.mjs && node --check scripts/gmail-oauth.mjs",
     "dev": "npx wrangler@latest dev --test-scheduled",
     "deploy": "npm run build && npx wrangler@latest deploy"
   }

@@ -1,3 +1,4 @@
+import { APPLICANT_FORM_DEFINITION, APPLICANT_QUALITY_CHECKS } from "./applicant-form-definition.js";
 import { DEFAULT_FUNCTION_SUB_FUNCTIONS, DEFAULT_FUNCTIONS, DEFAULT_SUB_FUNCTIONS, STATUS_LABELS } from "./constants.js";
 import { MULTIPLIERS_LOGO_DATA_URI } from "./logo.js";
 import { escapeAttr, escapeHtml, flagLabels, inputDateTime, localStamp, rowData, safeJsonParse } from "./util.js";
@@ -179,73 +180,39 @@ export function applicantForm({ user, cycle, submission, routes = [], error = ""
   const data = submission ? rowData(submission) : {};
   const canEdit = Boolean(cycle.application_open || (cycle.edit_open && submission));
   const routeOptions = buildRouteOptions(routes, data);
+  const definition = APPLICANT_FORM_DEFINITION;
+  const submitLabel = submission ? definition.submitCopy.update : definition.submitCopy.create;
   return `
-    <header class="top form-top">
-      <div>
-        <p class="eyebrow">Application</p>
-        <h1>Build your multiplier case</h1>
-        <p class="top-note">One page, four calm sections. Your latest saved version is what approvals will use.</p>
-      </div>
-      <span class="pill ${canEdit ? "good" : "warn"}">${canEdit ? "Editable" : "View only"}</span>
-    </header>
-    ${error ? `<div class="notice bad">${escapeHtml(error)}</div>` : ""}
-    <nav class="form-steps" aria-label="Application sections">
-      <a href="#you">You</a>
-      <a href="#team">Team</a>
-      <a href="#goal">Goal</a>
-      <a href="#alignment">Alignment</a>
-    </nav>
-    <section class="form-layout">
-      <aside class="form-aside">
+    <section class="applicant-form-page">
+      <header class="form-cover">
         <div>
-          <small>Signed in as</small>
-          <b>${escapeHtml(data.applicant_name || user.name)}</b>
-          <span>${escapeHtml(data.applicant_email || user.email)}</span>
+          <p class="eyebrow">${escapeHtml(definition.eyebrow)}</p>
+          <h1>${escapeHtml(definition.title)}</h1>
+          <p>${escapeHtml(definition.intro)}</p>
         </div>
-        <div>
-          <small>Cycle</small>
-          <b>${escapeHtml(cycle.quarter_label || cycle.name)}</b>
-          <span>${canEdit ? "Form is open" : "Form is locked"}</span>
+        <div class="form-cover-meta">
+          <span class="pill ${canEdit ? "good" : "warn"}">${canEdit ? "Editable" : "View only"}</span>
+          <div>
+            <small>Cycle</small>
+            <b>${escapeHtml(cycle.quarter_label || cycle.name)}</b>
+          </div>
+          <div>
+            <small>Signed in</small>
+            <b>${escapeHtml(data.applicant_name || user.name)}</b>
+            <span>${escapeHtml(data.applicant_email || user.email)}</span>
+          </div>
         </div>
-        ${submission ? `<div>${statusBlock(submission)}</div>` : ""}
-      </aside>
-      <form method="post" action="/apply" class="panel form application-form">
-        <div class="form-chapter full" id="you">
-          <span>1</span>
-          <div><h2>You</h2><p>Name and email are locked from login so versions stay clean.</p></div>
-        </div>
-        ${lockedField("Name", "applicant_name", data.applicant_name || user.name)}
-        ${lockedField("Email", "applicant_email", data.applicant_email || user.email)}
-
-        <div class="form-chapter full" id="team">
-          <span>2</span>
-          <div><h2>Team</h2><p>This decides the approval path and function-head grouping.</p></div>
-        </div>
-        ${selectField("Function", "department", data.department, routeOptions.functions, canEdit, true, "Choose the closest business/function home for this multiplier.")}
-        ${selectField("Sub-function", "sub_department", data.sub_department, routeOptions.subFunctions, canEdit, false, "Pick one only if it applies. The list changes after function selection.")}
-        ${field("Manager name", "manager_name", data.manager_name, "text", canEdit, true, "Use the name your manager would recognize in the approval mail.")}
-        ${field("Manager email", "manager_email", data.manager_email, "email", canEdit, true, "This is where manager approval will be requested.")}
-
-        <div class="form-chapter full" id="goal">
-          <span>3</span>
-          <div><h2>Multiplier goal</h2><p>Be concrete. Numbers, dates, SKU, channel, platform, and scope make approvals smoother.</p></div>
-        </div>
-        ${textarea("What is your regular OKR?", "regular_okr", data.regular_okr, canEdit, true, "Write the regular OKR this multiplier will sit beside. Add SKU, channel, or platform if relevant.")}
-        ${textarea("What is your Multiplier target?", "multiplier_target", data.multiplier_target, canEdit, true, "State the multiplier target with the metric, start point, target number, and timeline.")}
-        ${textarea("What is the baseline for your Multiplier?", "baseline", data.baseline, canEdit, true, "Add the current run rate or starting point. If the baseline is zero, say zero and explain why.")}
-        ${textarea("What is the AOP?", "aop", data.aop, canEdit, Boolean(cycle.aop_required), "Add the AOP number if this applies to your team.")}
-        ${textarea("How is it in line with your team's vision?", "team_vision", data.team_vision, canEdit, true, "Connect this target to the team's focus for the quarter. Keep it specific.")}
-        ${textarea("What part of the flywheel are you moving?", "flywheel", data.flywheel, canEdit, true, "Examples: acquisition, conversion, retention, revenue, operations speed, quality, or cost efficiency.")}
-
-        <div class="form-chapter full" id="alignment">
-          <span>4</span>
-          <div><h2>Alignment</h2><p>Confirm manager alignment and call out only the support that needs Multipliers intervention.</p></div>
-        </div>
-        <label class="check full alignment-check"><input type="checkbox" name="manager_aligned" ${data.manager_aligned ? "checked" : ""} ${canEdit ? "" : "disabled"} required><span>Is your manager in line with this?</span><small>Tick this only if your manager is aligned with the multiplier target.</small></label>
-        ${textarea("What support would you require from Multipliers team?", "support_required", data.support_required, canEdit, false, "Do not list normal dependencies. Mention only specific unblockers where the Multipliers team can help.")}
+      </header>
+      ${error ? `<div class="notice bad">${escapeHtml(error)}</div>` : ""}
+      <nav class="form-steps" aria-label="Application sections">
+        ${definition.sections.map((section) => `<a href="#${escapeAttr(section.id)}"><span>${escapeHtml(section.number)}</span>${escapeHtml(section.navTitle || section.title)}</a>`).join("")}
+      </nav>
+      <form method="post" action="/apply" class="application-form form-sheet">
+        ${qualityChecklist(data)}
+        ${definition.sections.map((section) => renderApplicantSection(section, { data, user, cycle, canEdit, routeOptions })).join("")}
         <script type="application/json" id="route-options">${jsonScript(routeOptions.byFunction)}</script>
-        <div class="actions full form-actions">
-          <button class="primary" ${canEdit ? "" : "disabled"}>${submission ? "Save latest version" : "Submit application"}</button>
+        <div class="form-submit-card">
+          <button class="primary" ${canEdit ? "" : "disabled"}>${escapeHtml(submitLabel)}</button>
           <a class="secondary" href="/status">Status</a>
         </div>
       </form>
@@ -446,6 +413,99 @@ function stageCard({ label, value, detail, state = "", href = "", post = "", act
     <em>${escapeHtml(detail || "")}</em>
     ${control}
   </article>`;
+}
+
+function qualityChecklist(data) {
+  return `<section class="quality-panel">
+    <div>
+      <small>Before submit</small>
+      <h2>Quick check</h2>
+    </div>
+    <ul>
+      ${APPLICANT_QUALITY_CHECKS.map((check) => {
+        const done = qualityCheckDone(check, data);
+        return `<li class="${done ? "done" : ""}" data-quality-check="${escapeAttr(check.id)}" data-quality-test="${escapeAttr(check.test)}" data-quality-fields="${escapeAttr(check.fields.join(","))}">
+          <span></span><b>${escapeHtml(check.label)}</b>
+        </li>`;
+      }).join("")}
+    </ul>
+  </section>`;
+}
+
+function renderApplicantSection(section, context) {
+  return `<section class="form-card" id="${escapeAttr(section.id)}">
+    <div class="form-card-head">
+      <span>${escapeHtml(section.number)}</span>
+      <div>
+        <h2>${escapeHtml(section.title)}</h2>
+        <p>${escapeHtml(section.intro)}</p>
+      </div>
+    </div>
+    <div class="question-stack">
+      ${section.fields.map((fieldDef) => renderApplicantField(fieldDef, context)).join("")}
+    </div>
+  </section>`;
+}
+
+function renderApplicantField(fieldDef, { data, user, cycle, canEdit, routeOptions }) {
+  const value = applicantFieldValue(fieldDef.name, data, user);
+  const required = applicantFieldRequired(fieldDef, cycle);
+  const enabled = canEdit;
+  const content = (() => {
+    if (fieldDef.kind === "locked") {
+      return lockedField(fieldDef.label, fieldDef.name, value);
+    }
+    if (fieldDef.kind === "select") {
+      return selectField(fieldDef.label, fieldDef.name, value, routeOptions[fieldDef.optionSet] || [], enabled, required, fieldDef.help, fieldDef.example);
+    }
+    if (fieldDef.kind === "textarea") {
+      return textarea(fieldDef.label, fieldDef.name, value, enabled, required, fieldDef.help, fieldDef.example);
+    }
+    if (fieldDef.kind === "checkbox") {
+      const checked = Boolean(value);
+      return `<label class="check alignment-check"><input type="checkbox" name="${escapeAttr(fieldDef.name)}" ${checked ? "checked" : ""} ${enabled ? "" : "disabled"} ${required ? "required" : ""}><span>${escapeHtml(fieldDef.label)}${required ? " *" : ""}</span>${fieldMeta(fieldDef.help, fieldDef.example)}</label>`;
+    }
+    return field(fieldDef.label, fieldDef.name, value, fieldDef.kind || "text", enabled, required, fieldDef.help, fieldDef.example);
+  })();
+  return `<div class="question-block">${content}</div>`;
+}
+
+function applicantFieldValue(name, data, user) {
+  if (name === "applicant_name") {
+    return data.applicant_name || user.name;
+  }
+  if (name === "applicant_email") {
+    return data.applicant_email || user.email;
+  }
+  return data[name] || "";
+}
+
+function applicantFieldRequired(fieldDef, cycle) {
+  if (fieldDef.requiredWhen) {
+    return Boolean(cycle[fieldDef.requiredWhen]);
+  }
+  return Boolean(fieldDef.required);
+}
+
+function qualityCheckDone(check, data = {}) {
+  const values = Object.fromEntries((check.fields || []).map((fieldName) => [fieldName, String(data[fieldName] || "").trim()]));
+  if (check.test === "filled") {
+    return Boolean(values[check.fields[0]]);
+  }
+  if (check.test === "metricOrDate") {
+    return /\d|fy|q[1-4]|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/i.test(values[check.fields[0]] || "");
+  }
+  if (check.test === "email") {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values[check.fields[0]] || "");
+  }
+  if (check.test === "checked") {
+    return Boolean(data[check.fields[0]]);
+  }
+  if (check.test === "differentText") {
+    const [left, right] = check.fields.map((fieldName) => String(data[fieldName] || "").trim().toLowerCase().replace(/\s+/g, " "));
+    return Boolean(left && right && left !== right);
+  }
+  return false;
 }
 
 function gmailPill(gmail) {
@@ -845,20 +905,24 @@ function lockedField(label, name, value) {
   return `<label><span>${escapeHtml(label)}</span><input name="${name}" value="${escapeAttr(value)}" readonly></label>`;
 }
 
-function field(label, name, value, type, enabled, required, help = "") {
-  return `<label><span>${escapeHtml(label)}${required ? " *" : ""}</span><input name="${name}" type="${type}" value="${escapeAttr(value || "")}" ${enabled ? "" : "readonly"} ${required ? "required" : ""}>${help ? `<small>${escapeHtml(help)}</small>` : ""}</label>`;
+function field(label, name, value, type, enabled, required, help = "", example = "") {
+  return `<label><span>${escapeHtml(label)}${required ? " *" : ""}</span><input name="${name}" type="${type}" value="${escapeAttr(value || "")}" ${enabled ? "" : "readonly"} ${required ? "required" : ""}>${fieldMeta(help, example)}</label>`;
 }
 
-function selectField(label, name, value, options, enabled, required, help = "") {
+function selectField(label, name, value, options, enabled, required, help = "", example = "") {
   const choices = uniqueClean([value, ...options]).filter(Boolean);
   return `<label><span>${escapeHtml(label)}${required ? " *" : ""}</span><select name="${name}" ${enabled ? "" : "disabled"} ${required ? "required" : ""} data-field="${escapeAttr(name)}">
     <option value="">Select ${escapeHtml(label.toLowerCase())}</option>
     ${choices.map((choice) => option(choice, value, choice)).join("")}
-  </select>${!enabled ? `<input type="hidden" name="${name}" value="${escapeAttr(value || "")}">` : ""}${help ? `<small>${escapeHtml(help)}</small>` : ""}</label>`;
+  </select>${!enabled ? `<input type="hidden" name="${name}" value="${escapeAttr(value || "")}">` : ""}${fieldMeta(help, example)}</label>`;
 }
 
-function textarea(label, name, value, enabled, required, help = "") {
-  return `<label class="full"><span>${escapeHtml(label)}${required ? " *" : ""}</span><textarea name="${name}" ${enabled ? "" : "readonly"} ${required ? "required" : ""}>${escapeHtml(value || "")}</textarea>${help ? `<small>${escapeHtml(help)}</small>` : ""}</label>`;
+function textarea(label, name, value, enabled, required, help = "", example = "") {
+  return `<label class="full"><span>${escapeHtml(label)}${required ? " *" : ""}</span><textarea name="${name}" ${enabled ? "" : "readonly"} ${required ? "required" : ""}>${escapeHtml(value || "")}</textarea>${fieldMeta(help, example)}</label>`;
+}
+
+function fieldMeta(help = "", example = "") {
+  return `${help ? `<small>${escapeHtml(help)}</small>` : ""}${example ? `<small class="field-example">${escapeHtml(example)}</small>` : ""}`;
 }
 
 function option(value, current, label) {
@@ -926,33 +990,66 @@ function clientScript() {
   const data = document.getElementById("route-options");
   const department = document.querySelector("[data-field='department']");
   const subDepartment = document.querySelector("[data-field='sub_department']");
-  if (!data || !department || !subDepartment || subDepartment.disabled) return;
-  let byFunction = {};
-  try { byFunction = JSON.parse(data.textContent || "{}"); } catch { byFunction = {}; }
-  const allOptions = Array.from(new Set(Object.values(byFunction).flat().filter(Boolean))).sort();
-  const current = subDepartment.value;
-  function fill() {
-    const chosen = department.value;
-    const options = chosen && Array.isArray(byFunction[chosen]) ? byFunction[chosen] : allOptions;
-    const previous = subDepartment.value || current;
-    subDepartment.innerHTML = "";
-    const empty = document.createElement("option");
-    empty.value = "";
-    empty.textContent = options.length ? "Select sub-function if applicable" : "No sub-function needed";
-    subDepartment.appendChild(empty);
-    for (const optionText of options) {
-      const option = document.createElement("option");
-      option.value = optionText;
-      option.textContent = optionText;
-      if (optionText === previous) option.selected = true;
-      subDepartment.appendChild(option);
+  if (data && department && subDepartment && !subDepartment.disabled) {
+    let byFunction = {};
+    try { byFunction = JSON.parse(data.textContent || "{}"); } catch { byFunction = {}; }
+    const allOptions = Array.from(new Set(Object.values(byFunction).flat().filter(Boolean))).sort();
+    const current = subDepartment.value;
+    function fill() {
+      const chosen = department.value;
+      const options = chosen && Array.isArray(byFunction[chosen]) ? byFunction[chosen] : allOptions;
+      const previous = subDepartment.value || current;
+      subDepartment.innerHTML = "";
+      const empty = document.createElement("option");
+      empty.value = "";
+      empty.textContent = options.length ? "Select sub-function if applicable" : "No sub-function needed";
+      subDepartment.appendChild(empty);
+      for (const optionText of options) {
+        const option = document.createElement("option");
+        option.value = optionText;
+        option.textContent = optionText;
+        if (optionText === previous) option.selected = true;
+        subDepartment.appendChild(option);
+      }
     }
-  }
-  department.addEventListener("change", () => {
-    subDepartment.value = "";
+    department.addEventListener("change", () => {
+      subDepartment.value = "";
+      fill();
+    });
     fill();
-  });
-  fill();
+  }
+
+  const checks = Array.from(document.querySelectorAll("[data-quality-check]"));
+  if (!checks.length) return;
+  const read = (name) => {
+    const field = document.getElementsByName(name)[0];
+    if (!field) return "";
+    return field.type === "checkbox" ? (field.checked ? "yes" : "") : field.value.trim();
+  };
+  const hasMetricOrDate = (value) => /\\d|fy|q[1-4]|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/i.test(value);
+  const isEmail = (value) => /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value);
+  const normalized = (value) => String(value || "").trim().toLowerCase().replace(/\\s+/g, " ");
+  function evaluate(item) {
+    const fields = (item.dataset.qualityFields || "").split(",").filter(Boolean);
+    const values = fields.map(read);
+    let done = false;
+    if (item.dataset.qualityTest === "filled") done = Boolean(values[0]);
+    if (item.dataset.qualityTest === "metricOrDate") done = hasMetricOrDate(values[0] || "");
+    if (item.dataset.qualityTest === "email") done = isEmail(values[0] || "");
+    if (item.dataset.qualityTest === "checked") done = Boolean(values[0]);
+    if (item.dataset.qualityTest === "differentText") {
+      const left = normalized(values[0]);
+      const right = normalized(values[1]);
+      done = Boolean(left && right && left !== right);
+    }
+    item.classList.toggle("done", done);
+  }
+  function refreshQuality() {
+    checks.forEach(evaluate);
+  }
+  document.addEventListener("input", refreshQuality);
+  document.addEventListener("change", refreshQuality);
+  refreshQuality();
 })();
 `;
 }
@@ -1144,66 +1241,169 @@ main{min-width:0;padding:28px;max-width:1480px;width:100%;margin:0 auto}
 .grid{display:grid;gap:18px;margin-bottom:18px}
 .two{grid-template-columns:repeat(2,minmax(0,1fr))}
 .three{grid-template-columns:repeat(3,minmax(0,1fr))}
+body.applicant-mode{
+  background:
+    linear-gradient(180deg,#fcfdfb 0,#f3f7f2 280px,#f6f7f4 100%),
+    var(--bg);
+}
+body.applicant-mode .shell{
+  display:block;
+  min-height:100vh;
+}
+body.applicant-mode .side{
+  position:sticky;
+  top:0;
+  z-index:30;
+  height:auto;
+  min-height:0;
+  display:grid;
+  grid-template-columns:minmax(190px,250px) minmax(0,1fr) auto;
+  gap:18px;
+  align-items:center;
+  background:rgba(252,253,251,.95);
+  color:#18352f;
+  border-right:0;
+  border-bottom:1px solid #d8e5df;
+  padding:14px clamp(16px,4vw,44px);
+  box-shadow:0 14px 36px rgba(15,59,53,.08);
+  backdrop-filter:blur(16px);
+}
+body.applicant-mode .brand{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+body.applicant-mode .brand-copy{
+  display:none;
+}
+body.applicant-mode .logo-tile{
+  width:205px;
+  background:transparent;
+  border:0;
+  padding:0;
+  box-shadow:none;
+}
+body.applicant-mode nav{
+  display:flex;
+  gap:8px;
+  justify-content:center;
+  overflow-x:auto;
+  min-width:0;
+}
+body.applicant-mode nav a{
+  color:#52615b;
+  background:transparent;
+  border:1px solid transparent;
+  white-space:nowrap;
+  padding:9px 12px;
+}
+body.applicant-mode nav a:hover{
+  background:#edf5f1;
+  color:#0f3b35;
+}
+body.applicant-mode nav a.active{
+  background:#0f3b35;
+  color:#fff;
+  box-shadow:none;
+}
+body.applicant-mode .role-switch{
+  border:0;
+  padding:0;
+  justify-self:end;
+}
+body.applicant-mode .test-switch{
+  display:flex;
+  gap:8px;
+  margin-top:0;
+}
+body.applicant-mode .side-button{
+  width:auto;
+  min-height:34px;
+  color:#0f3b35;
+  background:#eff7f3;
+  border:1px solid #cfe2da;
+  white-space:nowrap;
+}
+body.applicant-mode .side-button.quiet{
+  color:#52615b;
+  background:transparent;
+}
+body.applicant-mode .cycle-card,
+body.applicant-mode .who{
+  display:none;
+}
+body.applicant-mode main{
+  max-width:1180px;
+  padding:34px clamp(16px,4vw,44px) 72px;
+}
 .applicant-hero{
   position:relative;
-  min-height:410px;
+  min-height:430px;
   display:grid;
-  grid-template-columns:minmax(0,1fr) 280px;
-  gap:24px;
+  grid-template-columns:minmax(0,1fr) minmax(230px,310px);
+  gap:28px;
   align-items:end;
-  border:1px solid #cfe4dd;
+  border:1px solid #d5e6df;
   border-radius:8px;
   background:
-    linear-gradient(135deg,rgba(22,120,95,.14),rgba(255,209,102,.16) 45%,rgba(93,182,164,.18)),
-    #fff;
+    linear-gradient(135deg,rgba(15,59,53,.94),rgba(22,120,95,.88)),
+    #0f3b35;
   box-shadow:var(--shadow);
   margin-bottom:18px;
-  padding:34px;
+  padding:42px;
   overflow:hidden;
 }
+.applicant-hero:after{
+  content:"";
+  position:absolute;
+  right:28px;
+  top:26px;
+  bottom:26px;
+  width:1px;
+  background:rgba(255,255,255,.18);
+}
 .hero-copy{position:relative;z-index:1;max-width:820px}
+.hero-copy .eyebrow{color:#bfe2d6}
 .hero-copy h1{
   margin:0;
-  font-size:48px;
+  color:#fff;
+  font-size:54px;
   line-height:1.02;
   letter-spacing:0;
   max-width:780px;
 }
-.hero-copy p{margin:14px 0 0;color:#445565;font-size:17px;max-width:700px}
+.hero-copy p{margin:16px 0 0;color:#e6f2ed;font-size:18px;max-width:680px}
 .hero-cta{min-height:46px;padding-inline:18px}
 .hero-ticket{
   position:relative;
   z-index:1;
   display:grid;
-  gap:6px;
-  background:rgba(255,255,255,.86);
-  border:1px solid rgba(20,32,51,.12);
-  border-radius:8px;
-  padding:18px;
-  box-shadow:var(--shadow-soft);
+  gap:8px;
+  color:#fff;
+  border-left:1px solid rgba(255,255,255,.22);
+  padding-left:24px;
 }
-.hero-ticket small{color:var(--green);font-weight:850;text-transform:uppercase;font-size:12px}
-.hero-ticket b{font-size:25px;line-height:1.08}
-.hero-ticket span{color:var(--muted)}
+.hero-ticket small{color:#bfe2d6;font-weight:850;text-transform:uppercase;font-size:12px}
+.hero-ticket b{font-size:30px;line-height:1.06}
+.hero-ticket span{color:#d8eee6}
 .hero-art{
   position:absolute;
   inset:0;
   pointer-events:none;
-  opacity:.9;
+  opacity:.22;
 }
 .hero-art span{
   position:absolute;
-  width:70px;
-  height:16px;
+  width:110px;
+  height:2px;
   border-radius:999px;
-  background:#ffd166;
-  transform:rotate(-18deg);
+  background:#fff;
 }
-.hero-art span:nth-child(1){right:80px;top:72px;background:#16785f}
-.hero-art span:nth-child(2){right:190px;top:130px;background:#ef6f61;width:44px}
-.hero-art span:nth-child(3){left:52px;bottom:72px;background:#5db6a4;width:98px}
-.hero-art span:nth-child(4){right:42px;bottom:96px;background:#2764a8;width:116px}
-.hero-art span:nth-child(5){left:45%;top:48px;background:#ffd166;width:58px}
+.hero-art span:nth-child(1){right:80px;top:72px}
+.hero-art span:nth-child(2){right:190px;top:130px;width:64px}
+.hero-art span:nth-child(3){left:52px;bottom:72px;width:150px}
+.hero-art span:nth-child(4){right:42px;bottom:96px;width:190px}
+.hero-art span:nth-child(5){left:45%;top:48px;width:84px}
 .experience-path{
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
@@ -1266,6 +1466,10 @@ main{min-width:0;padding:28px;max-width:1480px;width:100%;margin:0 auto}
   flex:0 0 auto;
   min-width:104px;
   text-align:center;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
   background:#fff;
   border:1px solid var(--line-strong);
   border-radius:8px;
@@ -1273,6 +1477,154 @@ main{min-width:0;padding:28px;max-width:1480px;width:100%;margin:0 auto}
   font-weight:850;
   color:#25313d;
   box-shadow:var(--shadow-soft);
+}
+.form-steps a span{color:var(--green);font-size:11px;font-weight:850}
+.applicant-form-page{
+  max-width:920px;
+  margin:0 auto 64px;
+}
+.form-cover{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(210px,260px);
+  gap:28px;
+  align-items:end;
+  background:#fff;
+  border:1px solid #d7e3dd;
+  border-top:6px solid var(--green);
+  border-radius:8px;
+  box-shadow:0 24px 70px rgba(15,59,53,.10);
+  padding:34px;
+  margin-bottom:14px;
+}
+.form-cover h1{
+  margin:0;
+  font-size:46px;
+  line-height:1.02;
+  letter-spacing:0;
+  max-width:100%;
+  overflow-wrap:break-word;
+}
+.form-cover p{margin:12px 0 0;color:#4d5d56;font-size:17px;max-width:620px}
+.form-cover-meta{
+  display:grid;
+  gap:5px;
+  border-left:1px solid var(--line);
+  padding-left:20px;
+  min-width:0;
+}
+.form-cover-meta .pill{justify-self:start;margin:0 0 4px}
+.form-cover-meta div{display:grid;gap:2px;min-width:0}
+.form-cover-meta small{color:var(--muted);font-weight:850;text-transform:uppercase;font-size:11px}
+.form-cover-meta b,.form-cover-meta span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.form-sheet{
+  display:grid;
+  gap:14px;
+}
+.quality-panel,.form-card,.form-submit-card{
+  background:#fff;
+  border:1px solid #dbe4df;
+  border-radius:8px;
+  box-shadow:0 12px 34px rgba(25,38,48,.06);
+}
+.quality-panel{
+  display:grid;
+  grid-template-columns:170px minmax(0,1fr);
+  gap:18px;
+  align-items:start;
+  padding:18px 22px;
+}
+.quality-panel small,.form-card-head span{
+  color:var(--green);
+  font-weight:850;
+  text-transform:uppercase;
+  font-size:12px;
+  letter-spacing:0;
+}
+.quality-panel h2{margin:2px 0 0;font-size:19px}
+.quality-panel ul{
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px 14px;
+}
+.quality-panel li{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+  color:#61706a;
+}
+.quality-panel li span{
+  width:12px;
+  height:12px;
+  border:1px solid #aebbb5;
+  border-radius:999px;
+  background:#fff;
+  flex:0 0 auto;
+}
+.quality-panel li.done{color:#163f36}
+.quality-panel li.done span{background:var(--green);border-color:var(--green);box-shadow:inset 0 0 0 3px #fff}
+.quality-panel li b{font-size:13px;line-height:1.25}
+.form-card{
+  padding:28px 34px 30px;
+  scroll-margin-top:78px;
+}
+.form-card-head{
+  display:grid;
+  grid-template-columns:46px minmax(0,1fr);
+  gap:14px;
+  align-items:start;
+  margin-bottom:18px;
+}
+.form-card-head span{
+  width:46px;
+  height:46px;
+  display:grid;
+  place-items:center;
+  color:#fff;
+  background:#143f37;
+  border-radius:8px;
+}
+.form-card-head h2{margin:0;font-size:25px;line-height:1.08}
+.form-card-head p{margin:5px 0 0;color:var(--muted)}
+.question-stack{display:grid;gap:0}
+.question-block{
+  border-top:1px solid #e3e9e6;
+  padding:18px 0;
+}
+.question-block:first-child{border-top:0;padding-top:0}
+.question-block:last-child{padding-bottom:0}
+.form-sheet label{display:block;min-width:0}
+.form-sheet label span{display:block;margin-bottom:7px;color:#1e302b;font-weight:850}
+.form-sheet label small{display:block;margin-top:7px;color:#64746d;font-size:13px;line-height:1.4;max-width:640px}
+.form-sheet .field-example{
+  color:#25594d;
+}
+.form-sheet input,.form-sheet select,.form-sheet textarea{
+  border-color:#b9c8c1;
+  border-radius:7px;
+  padding:12px 13px;
+  background:#fff;
+}
+.form-sheet input[readonly],.form-sheet textarea[readonly]{background:#f5f8f6}
+.form-sheet textarea{min-height:118px}
+.form-sheet .alignment-check{
+  display:grid;
+  grid-template-columns:20px minmax(0,1fr);
+  gap:2px 11px;
+  align-items:start;
+  background:#f7faf8;
+  border:1px solid #cfded6;
+}
+.form-sheet .alignment-check input{margin-top:2px}
+.form-sheet .alignment-check span,.form-sheet .alignment-check small{grid-column:2}
+.form-submit-card{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  padding:18px;
 }
 .form-chapter{
   display:grid;
@@ -1698,12 +2050,31 @@ td b{font-weight:850}
   .ops-strip{grid-template-columns:1fr}
   .welcome-band,.cockpit-band,.applicant-hero{grid-template-columns:1fr}
   .welcome-status{justify-self:stretch}
-  .hero-ticket{max-width:360px}
+  .applicant-hero:after{display:none}
+  .hero-ticket{border-left:0;padding-left:0;max-width:360px}
+  .form-cover{grid-template-columns:1fr}
+  .form-cover-meta{border-left:0;border-top:1px solid var(--line);padding:18px 0 0}
 }
 @media(max-width:860px){
   body{font-size:14px}
   .shell{grid-template-columns:minmax(0,1fr);overflow:hidden}
   .side{position:static;height:auto;padding:16px;gap:14px;max-width:100vw;overflow:hidden}
+  body.applicant-mode .side{
+    grid-template-columns:1fr;
+    gap:12px;
+    padding:14px 16px;
+    overflow:visible;
+  }
+  body.applicant-mode .brand{justify-content:center}
+  body.applicant-mode .logo-tile{width:min(220px,80vw)}
+  body.applicant-mode nav{
+    justify-content:flex-start;
+    width:100%;
+    padding-bottom:2px;
+  }
+  body.applicant-mode .role-switch{justify-self:stretch}
+  body.applicant-mode .test-switch{justify-content:center}
+  body.applicant-mode main{padding:22px 16px 56px}
   nav{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
   nav a{flex:0 0 auto;justify-content:center;text-align:center;min-width:104px}
   .role-switch{border:0;padding:0}
@@ -1714,6 +2085,13 @@ td b{font-weight:850}
   .top .actions{justify-content:flex-start}
   .welcome-copy h1,.review-hero h1,.hero-copy h1{font-size:31px}
   .two,.three,.metrics,.metrics.three,.form,.filters,.inline,.inline.route-add,.form-layout,.review-actions,.ops-strip{grid-template-columns:1fr}
+  .applicant-form-page{max-width:100%}
+  .form-cover{padding:24px}
+  .form-cover h1{font-size:34px}
+  .quality-panel{grid-template-columns:1fr;padding:18px}
+  .quality-panel ul{grid-template-columns:1fr}
+  .form-card{padding:22px}
+  .form-submit-card{flex-direction:column}
   .form-aside{position:static}
   .application-form{width:100%;max-width:100%}
   .form-chapter{grid-template-columns:34px minmax(0,calc(100vw - 98px))}
@@ -1727,8 +2105,14 @@ td b{font-weight:850}
 }
 @media(max-width:560px){
   .welcome-band,.cockpit-band,.review-hero,.applicant-hero{padding:18px}
-  .applicant-hero{min-height:420px}
+  .applicant-hero{min-height:390px}
   .welcome-copy h1,.review-hero h1,.hero-copy h1{font-size:27px}
+  .form-cover{padding:20px}
+  .form-cover h1{font-size:28px;line-height:1.08}
+  .form-card{padding:20px 16px}
+  .form-card-head{grid-template-columns:40px minmax(0,1fr)}
+  .form-card-head span{width:40px;height:40px}
+  .form-card-head h2{font-size:22px}
   .top-note{width:auto;max-width:335px}
   .top h1{font-size:26px;overflow-wrap:anywhere}
   .top .actions,.top .actions form{width:100%}
@@ -1751,7 +2135,8 @@ td b{font-weight:850}
     overflow:visible;
     width:min(100%,358px);
   }
-  .form-steps a{min-width:0;padding:9px 6px;font-size:13px}
+  .form-steps a{min-width:0;padding:9px 6px;font-size:13px;gap:0}
+  .form-steps a span{display:none}
   .actions .primary,.actions .secondary,.actions .danger,.form-actions button,.form-actions a{width:100%}
   .bars div{grid-template-columns:1fr 1fr 30px}
 }`;
