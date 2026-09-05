@@ -75,6 +75,10 @@ async function route(request, env, cycle, ctx) {
   const path = url.pathname;
   const user = await readUser(request, env, ctx);
 
+  if (path === "/healthz" && request.method === "GET") {
+    return json({ ok: true, cycle: cycle.name, gmail: gmailConfigured(env) });
+  }
+
   if (path.startsWith("/api/")) {
     return apiRoute(request, env, cycle, user);
   }
