@@ -1,0 +1,36 @@
+{
+  "name": "multipliers-os",
+  "main": "dist/server/index.js",
+  "compatibility_date": "2026-09-05",
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  },
+  "triggers": {
+    "crons": [
+      "*/15 * * * *"
+    ]
+  },
+  "vars": {
+    "ADMIN_EMAILS": "simar.kaler@mosaicwellness.in",
+    "GMAIL_SENDER": "multipliers@mosaicwellness.in",
+    "ALLOW_DEV_AUTH": "false"
+  },
+  "access": {
+    "dev": {
+      "aud": "multipliers-os-local-dev",
+      "identity": {
+        "email": "simar.kaler@mosaicwellness.in",
+        "name": "Simar Kaler"
+      }
+    }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "multipliers-os-db",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "drizzle"
+    }
+  ]
+}

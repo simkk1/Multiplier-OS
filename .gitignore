@@ -1,5 +1,10 @@
 .env
+.dev.vars
+.cloudflare-secrets.json
+.openai/
+.wrangler/
 .tools/
+dist/
 node_modules/
 *.zip
 *.7z.exe

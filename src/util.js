@@ -62,13 +62,17 @@ export async function formData(request) {
   return out;
 }
 
-export function readUser(request, env) {
-  let email = request.headers.get("oai-authenticated-user-email") || "";
-  let id = request.headers.get("oai-authenticated-user-id") || "";
+export async function readUser(request, env, ctx) {
+  const accessIdentity = await readCloudflareAccessIdentity(ctx);
+  let email = clean(accessIdentity?.email) || request.headers.get("oai-authenticated-user-email") || "";
+  let id = clean(accessIdentity?.user_uuid || accessIdentity?.sub || accessIdentity?.id) || request.headers.get("oai-authenticated-user-id") || "";
   let name = "";
+  if (accessIdentity?.name) {
+    name = clean(accessIdentity.name);
+  }
   const rawName = request.headers.get("oai-authenticated-user-full-name") || "";
   const nameEncoding = request.headers.get("oai-authenticated-user-full-name-encoding") || "";
-  if (rawName && nameEncoding === "percent-encoded-utf-8") {
+  if (!name && rawName && nameEncoding === "percent-encoded-utf-8") {
     try {
       name = decodeURIComponent(rawName);
     } catch {
@@ -93,6 +97,17 @@ export function readUser(request, env) {
     isMosaic: emailNorm.endsWith("@mosaicwellness.in"),
     isAdmin: admins.includes(emailNorm),
   };
+}
+
+async function readCloudflareAccessIdentity(ctx) {
+  if (!ctx?.access) {
+    return null;
+  }
+  try {
+    return await ctx.access.getIdentity();
+  } catch {
+    return null;
+  }
 }
 
 export function requireMosaic(user, cycle) {

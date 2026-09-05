@@ -53,11 +53,11 @@ import {
 import { formData, html, json, localStamp, readUser, redirect, requireAdmin, requireMosaic, rowData } from "./util.js";
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     try {
       const cycle = await ensureBoot(env);
       await enforceWindow(env, cycle);
-      return await route(request, env, await ensureBoot(env));
+      return await route(request, env, await ensureBoot(env), ctx);
     } catch (error) {
       return html(errorPage(error), { status: 500 });
     }
@@ -68,10 +68,10 @@ export default {
   },
 };
 
-async function route(request, env, cycle) {
+async function route(request, env, cycle, ctx) {
   const url = new URL(request.url);
   const path = url.pathname;
-  const user = readUser(request, env);
+  const user = await readUser(request, env, ctx);
 
   if (path.startsWith("/api/")) {
     return apiRoute(request, env, cycle, user);

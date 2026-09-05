@@ -1,29 +1,17 @@
 $ErrorActionPreference = "Stop"
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
-$dist = Join-Path $root "dist"
-$server = Join-Path $dist "server"
-$openai = Join-Path $dist ".openai"
-$src = Join-Path $root "src"
+$nodeScript = Join-Path $root "scripts\build.mjs"
+$localNode = Join-Path $root ".tools\node-v24.20.0-win-x64\node.exe"
 
-if (-not (Test-Path $src)) {
-  throw "Missing src directory"
+if (Test-Path $localNode) {
+  & $localNode $nodeScript
+  exit $LASTEXITCODE
 }
 
-if (Test-Path $dist) {
-  $resolvedDist = Resolve-Path $dist
-  if (-not ($resolvedDist.Path.StartsWith($root.Path))) {
-    throw "Refusing to remove dist outside project root"
-  }
-  Remove-Item -LiteralPath $resolvedDist.Path -Recurse -Force
+if (Get-Command node -ErrorAction SilentlyContinue) {
+  node $nodeScript
+  exit $LASTEXITCODE
 }
 
-New-Item -ItemType Directory -Force -Path $server | Out-Null
-Copy-Item -Path (Join-Path $src "*") -Destination $server -Recurse -Force
-New-Item -ItemType Directory -Force -Path $openai | Out-Null
-Copy-Item -Path (Join-Path $root ".openai\hosting.json") -Destination (Join-Path $openai "hosting.json") -Force
-if (Test-Path (Join-Path $root "drizzle")) {
-  Copy-Item -Path (Join-Path $root "drizzle") -Destination (Join-Path $openai "drizzle") -Recurse -Force
-}
-
-Write-Host "Built dist/server/index.js"
+throw "Node is required to build Multipliers OS."

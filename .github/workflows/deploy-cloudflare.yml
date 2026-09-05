@@ -1,0 +1,63 @@
+name: Deploy to Cloudflare
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: multipliers-os-cloudflare
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy Worker
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Build
+        run: npm run build
+
+      - name: Check
+        run: npm run check
+
+      - name: Patch Cloudflare config
+        run: node scripts/patch-wrangler-config.mjs
+        env:
+          CLOUDFLARE_D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
+
+      - name: Apply D1 migrations
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 migrations apply DB --remote
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+          secrets: |
+            GMAIL_CLIENT_ID
+            GMAIL_CLIENT_SECRET
+            GMAIL_REFRESH_TOKEN
+        env:
+          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
+          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+          GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
