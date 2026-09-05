@@ -158,7 +158,7 @@ async function adminRoute(request, env, cycle, user) {
       listApprovalRequests(env, cycle.id),
       listSnapshots(env, cycle.id),
     ]);
-    return page({ title: "Admin", user, cycle, active: "admin", content: adminDashboard({ cycle, stats, tasks, requests, snapshots, split, gmail: gmailStatus(env) }) });
+    return page({ title: "Admin", user, cycle, active: "admin", content: adminDashboard({ cycle, stats, tasks, requests, snapshots, split, gmail: gmailStatus(env, request) }) });
   }
 
   if (path === "/admin/settings" && request.method === "POST") {
@@ -214,7 +214,7 @@ async function adminRoute(request, env, cycle, user) {
       active: "approvals",
       content: adminApprovals({
         requests,
-        gmail: gmailStatus(env),
+        gmail: gmailStatus(env, request),
         notice: url.searchParams.get("notice") || "",
         noticeTone: url.searchParams.get("tone") || "",
       }),

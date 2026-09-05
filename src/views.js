@@ -359,7 +359,7 @@ function attentionList(stats, tasks, gmail) {
 
 function attentionItems(stats, tasks, gmail) {
   const items = [];
-  if (!gmail?.configured) {
+  if (!gmail?.configured && !gmail?.localPreview) {
     const missing = gmail?.missing?.length ? `${gmail.missing.length} OAuth secrets missing` : "OAuth secrets missing";
     items.push({ tone: "bad", title: "Gmail not connected", detail: missing, href: "/admin/approvals", action: "Open" });
   }
@@ -449,7 +449,13 @@ function stageCard({ label, value, detail, state = "", href = "", post = "", act
 }
 
 function gmailPill(gmail) {
-  return gmail?.configured ? `<span class="pill good">Connected</span>` : `<span class="pill bad">OAuth missing</span>`;
+  if (gmail?.configured) {
+    return `<span class="pill good">Connected</span>`;
+  }
+  if (gmail?.localPreview) {
+    return `<span class="pill warn">Local preview</span>`;
+  }
+  return `<span class="pill bad">OAuth missing</span>`;
 }
 
 function gmailPanel(gmail) {
@@ -457,6 +463,12 @@ function gmailPanel(gmail) {
     return `<div class="gmail-panel connected">
       <b>Gmail actions are ready.</b>
       <span>Sender: ${escapeHtml(gmail.sender || "-")}</span>
+    </div>`;
+  }
+  if (gmail?.localPreview) {
+    return `<div class="gmail-panel local">
+      <b>Email is paused in local preview.</b>
+      <span>Production Gmail secrets live in GitHub/Cloudflare, so the deployed app can send, draft, and sync. Local preview stays disabled unless private dev secrets are added.</span>
     </div>`;
   }
   const missing = gmail?.missing?.length ? gmail.missing : ["GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "GMAIL_REFRESH_TOKEN"];
@@ -1485,6 +1497,7 @@ main{min-width:0;padding:28px;max-width:1480px;width:100%;margin:0 auto}
   padding:14px;
 }
 .gmail-panel.connected{background:var(--green-soft);border-color:#a7dac8}
+.gmail-panel.local{background:var(--blue-soft);border-color:#b7cff0}
 .gmail-panel span{color:var(--muted)}
 .section-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:13px}
 .section-head h2{margin:0}

@@ -5,7 +5,7 @@ export function gmailConfigured(env) {
   return Boolean(env.GMAIL_CLIENT_ID && env.GMAIL_CLIENT_SECRET && env.GMAIL_REFRESH_TOKEN);
 }
 
-export function gmailStatus(env) {
+export function gmailStatus(env, request = null) {
   const missing = [
     ["GMAIL_CLIENT_ID", env.GMAIL_CLIENT_ID],
     ["GMAIL_CLIENT_SECRET", env.GMAIL_CLIENT_SECRET],
@@ -15,7 +15,17 @@ export function gmailStatus(env) {
     configured: missing.length === 0,
     missing,
     sender: env.GMAIL_SENDER || DEFAULT_SENDER_EMAIL,
+    localPreview: isLocalPreview(request),
   };
+}
+
+function isLocalPreview(request) {
+  try {
+    const host = new URL(request?.url || "").hostname;
+    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+  } catch {
+    return false;
+  }
 }
 
 export function gmailErrorMessage(error) {
