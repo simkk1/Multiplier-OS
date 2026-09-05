@@ -8,25 +8,11 @@ const TEST_COOKIE_MAX_AGE = 8 * 60 * 60;
 export async function readUser(request, env, ctx) {
   const accessIdentity = await readCloudflareAccessIdentity(ctx);
   const testProfile = await readTestProfile(request, env);
-  let email = clean(accessIdentity?.email) || request.headers.get("oai-authenticated-user-email") || "";
-  let id = clean(accessIdentity?.user_uuid || accessIdentity?.sub || accessIdentity?.id) || request.headers.get("oai-authenticated-user-id") || "";
+  let email = "";
+  let id = "";
   let name = "";
 
-  if (accessIdentity?.name) {
-    name = clean(accessIdentity.name);
-  }
-
-  const rawName = request.headers.get("oai-authenticated-user-full-name") || "";
-  const nameEncoding = request.headers.get("oai-authenticated-user-full-name-encoding") || "";
-  if (!name && rawName && nameEncoding === "percent-encoded-utf-8") {
-    try {
-      name = decodeURIComponent(rawName);
-    } catch {
-      name = "";
-    }
-  }
-
-  if (!email && testProfile) {
+  if (testProfile) {
     if (testProfile === "admin") {
       email = firstAdminEmail(env);
       name = env.DEV_USER_NAME || "Admin User";
@@ -35,6 +21,21 @@ export async function readUser(request, env, ctx) {
       name = env.TEST_APPLICANT_NAME || "Applicant Tester";
     }
     id = `test-${testProfile}`;
+  } else {
+    email = clean(accessIdentity?.email) || request.headers.get("oai-authenticated-user-email") || "";
+    id = clean(accessIdentity?.user_uuid || accessIdentity?.sub || accessIdentity?.id) || request.headers.get("oai-authenticated-user-id") || "";
+    if (accessIdentity?.name) {
+      name = clean(accessIdentity.name);
+    }
+    const rawName = request.headers.get("oai-authenticated-user-full-name") || "";
+    const nameEncoding = request.headers.get("oai-authenticated-user-full-name-encoding") || "";
+    if (!name && rawName && nameEncoding === "percent-encoded-utf-8") {
+      try {
+        name = decodeURIComponent(rawName);
+      } catch {
+        name = "";
+      }
+    }
   }
 
   const emailNorm = norm(email);
@@ -49,6 +50,7 @@ export async function readUser(request, env, ctx) {
     isMosaic: Boolean(testProfile) || (orgDomain ? emailNorm.endsWith(`@${orgDomain}`) : false),
     isAdmin: testProfile === "admin" || admins.includes(emailNorm),
     isTestUser: Boolean(testProfile),
+    canUseTestProfiles: testAuthEnabled(env) && Boolean(testAuthKey(env)),
   };
 }
 
@@ -56,6 +58,19 @@ export async function testAuthRoute(request, env) {
   const url = new URL(request.url);
   if (url.pathname === "/test-logout" && request.method === "POST") {
     return redirectWithCookie("/", clearTestCookie(request));
+  }
+  if (url.pathname === "/test-profile" && request.method === "POST") {
+    if (!testAuthEnabled(env) || !testAuthKey(env)) {
+      return html("Temporary test access is not enabled.", { status: 404 });
+    }
+    const currentProfile = await readTestProfile(request, env);
+    if (!currentProfile) {
+      return new Response(null, { status: 303, headers: { location: "/test-login" } });
+    }
+    const form = await request.formData();
+    const profile = safeProfile(form.get("profile"));
+    const next = profile === "applicant" ? "/" : "/admin";
+    return redirectWithCookie(next, await makeTestCookie(profile, env, request));
   }
   if (url.pathname !== "/test-login") {
     return null;
@@ -67,7 +82,8 @@ export async function testAuthRoute(request, env) {
     return html(testLoginPage({ error: "Temporary test access is enabled but no test key is configured.", next: "/" }), { status: 503 });
   }
   if (request.method === "GET") {
-    return html(testLoginPage({ next: safeNext(url.searchParams.get("next")) }));
+    const profile = safeProfile(url.searchParams.get("profile"));
+    return html(testLoginPage({ next: safeNext(url.searchParams.get("next"), profile === "applicant" ? "/" : "/admin"), profile }));
   }
   if (request.method !== "POST") {
     return html("Method not allowed", { status: 405 });
@@ -75,8 +91,11 @@ export async function testAuthRoute(request, env) {
 
   const form = await request.formData();
   const password = clean(form.get("password"));
-  const profile = clean(form.get("profile")) === "applicant" ? "applicant" : "admin";
-  const next = safeNext(form.get("next"));
+  const profile = safeProfile(form.get("profile"));
+  let next = safeNext(form.get("next"), profile === "applicant" ? "/" : "/admin");
+  if (profile === "applicant" && next.startsWith("/admin")) {
+    next = "/";
+  }
   if (password !== testAuthKey(env)) {
     return html(testLoginPage({ error: "That test code did not match.", next, profile }), { status: 401 });
   }
@@ -180,9 +199,13 @@ function cookieValue(header, name) {
   return found ? found.slice(prefix.length) : "";
 }
 
-function safeNext(value) {
+function safeProfile(value) {
+  return clean(value) === "applicant" ? "applicant" : "admin";
+}
+
+function safeNext(value, fallback = "/admin") {
   const next = clean(value);
-  return next.startsWith("/") && !next.startsWith("//") ? next : "/admin";
+  return next.startsWith("/") && !next.startsWith("//") ? next : fallback;
 }
 
 function redirectWithCookie(location, cookie) {
@@ -230,7 +253,7 @@ function testLoginPage({ error = "", next = "/admin", profile = "admin" }) {
       <input type="hidden" name="next" value="${escapeAttr(next)}">
       <label><span>Open as</span><select name="profile">
         <option value="admin" ${profile === "admin" ? "selected" : ""}>Admin cockpit</option>
-        <option value="applicant" ${profile === "applicant" ? "selected" : ""}>Applicant face</option>
+        <option value="applicant" ${profile === "applicant" ? "selected" : ""}>User / applicant view</option>
       </select></label>
       <label><span>Test code</span><input name="password" type="password" autocomplete="current-password" autofocus required></label>
       <button>Enter Multipliers OS</button>

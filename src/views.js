@@ -36,6 +36,7 @@ export function layout({ title, user, cycle, active = "home", content }) {
       <nav>
         ${nav.map(([href, label, key]) => `<a class="${active === key ? "active" : ""}" href="${href}"><span>${label}</span></a>`).join("")}
       </nav>
+      ${user.canUseTestProfiles ? `<div class="role-switch">${user.isTestUser ? testProfileControls(admin) : testLoginLinks(admin)}</div>` : ""}
       <div class="cycle-card">
         <small>Cycle mode</small>
         <b>${escapeHtml(cycleStateLabel(cycle.state))}</b>
@@ -45,7 +46,6 @@ export function layout({ title, user, cycle, active = "home", content }) {
         <small>Signed in</small>
         <b>${escapeHtml(user.name)}</b>
         <span>${escapeHtml(user.email)}</span>
-        ${user.isTestUser ? `<form method="post" action="/test-logout"><button class="side-button">Switch test profile</button></form>` : ""}
       </div>
     </aside>
     <main>
@@ -54,6 +54,22 @@ export function layout({ title, user, cycle, active = "home", content }) {
   </div>
 </body>
 </html>`;
+}
+
+function testProfileControls(admin) {
+  return `<div class="test-switch">
+    <form method="post" action="/test-profile">
+      <input type="hidden" name="profile" value="${admin ? "applicant" : "admin"}">
+      <button class="side-button">${admin ? "View user side" : "View admin cockpit"}</button>
+    </form>
+    <form method="post" action="/test-logout"><button class="side-button quiet">Change test login</button></form>
+  </div>`;
+}
+
+function testLoginLinks(admin) {
+  return `<div class="test-switch">
+    <a class="side-button" href="/test-login?profile=${admin ? "applicant" : "admin"}&next=${admin ? "%2F" : "%2Fadmin"}">${admin ? "Preview user side" : "Preview admin cockpit"}</a>
+  </div>`;
 }
 
 export function applicantHome({ user, cycle, submission, stats, split }) {
@@ -898,6 +914,11 @@ nav a{
 }
 nav a:hover{background:rgba(255,255,255,.08);color:#fff}
 nav a.active{background:#ffffff;color:#142033;box-shadow:0 10px 24px rgba(0,0,0,.14)}
+.role-switch{
+  border-top:1px solid rgba(255,255,255,.10);
+  border-bottom:1px solid rgba(255,255,255,.10);
+  padding:10px 0;
+}
 .cycle-card,.who{
   border:1px solid rgba(255,255,255,.12);
   border-radius:8px;
@@ -911,9 +932,12 @@ nav a.active{background:#ffffff;color:#142033;box-shadow:0 10px 24px rgba(0,0,0,
 .cycle-card b,.who b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cycle-card span,.who span{color:#cbd6e2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .who{margin-top:auto}
+.test-switch{display:grid;gap:7px;margin-top:8px}
 .side-button{
+  display:flex;
+  align-items:center;
+  justify-content:center;
   width:100%;
-  margin-top:8px;
   min-height:32px;
   border:1px solid rgba(255,255,255,.20);
   background:rgba(255,255,255,.08);
@@ -921,7 +945,9 @@ nav a.active{background:#ffffff;color:#142033;box-shadow:0 10px 24px rgba(0,0,0,
   border-radius:7px;
   padding:6px 8px;
   font-size:13px;
+  font-weight:760;
 }
+.side-button.quiet{background:transparent;color:#cbd6e2}
 .muted,td span,li span{color:var(--muted)}
 main{min-width:0;padding:28px;max-width:1480px;width:100%;margin:0 auto}
 .top{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:20px}
@@ -1345,6 +1371,7 @@ td b{font-weight:850}
   .side{position:static;height:auto;padding:16px;gap:14px}
   nav{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
   nav a{flex:0 0 auto;justify-content:center;text-align:center;min-width:104px}
+  .role-switch{border:0;padding:0}
   .cycle-card,.who{display:none}
   main,.review{padding:16px}
   .top{flex-direction:column;align-items:stretch}
