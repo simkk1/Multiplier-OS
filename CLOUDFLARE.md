@@ -45,6 +45,16 @@ TEST_AUTH_KEY
 
 The Gmail secrets must belong to the sender mailbox you configure with `GMAIL_SENDER`.
 
+Gmail OAuth needs these scopes:
+
+```text
+https://www.googleapis.com/auth/gmail.send
+https://www.googleapis.com/auth/gmail.compose
+https://www.googleapis.com/auth/gmail.readonly
+```
+
+See `docs/gmail-oauth.md` for the 401/invalid-token checklist.
+
 `FUNCTION_ROUTES_JSON` and `TEAM1_MANAGERS_JSON` can be `[]` for the first deploy. Admin can also add routes and Team 1 managers in the app after login.
 
 ## Local Commands

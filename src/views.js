@@ -1,4 +1,5 @@
 import { STATUS_LABELS } from "./constants.js";
+import { MULTIPLIERS_LOGO_DATA_URI } from "./logo.js";
 import { escapeAttr, escapeHtml, flagLabels, inputDateTime, localStamp, rowData, safeJsonParse } from "./util.js";
 
 export function layout({ title, user, cycle, active = "home", content }) {
@@ -29,8 +30,8 @@ export function layout({ title, user, cycle, active = "home", content }) {
   <div class="shell">
     <aside class="side">
       <a class="brand" href="${admin ? "/admin" : "/"}">
-        <span class="mark"><i></i><i></i><i></i><i></i></span>
-        <span><b>Multipliers OS</b><small>${escapeHtml(cycle.name)}</small></span>
+        <span class="logo-tile"><img src="${MULTIPLIERS_LOGO_DATA_URI}" alt="Multipliers"></span>
+        <span class="brand-copy"><b>Multipliers OS</b><small>${escapeHtml(cycle.name)}</small></span>
       </a>
       <nav>
         ${nav.map(([href, label, key]) => `<a class="${active === key ? "active" : ""}" href="${href}"><span>${label}</span></a>`).join("")}
@@ -192,7 +193,7 @@ export function applicantStatus({ submission, versions, tasks = [] }) {
     </section>`;
 }
 
-export function adminDashboard({ cycle, stats, tasks, requests, snapshots, split }) {
+export function adminDashboard({ cycle, stats, tasks, requests, snapshots, split, gmail }) {
   return `
     <header class="top">
       <div><p class="eyebrow">Admin cockpit</p><h1>${escapeHtml(cycle.name)} control room</h1></div>
@@ -221,11 +222,15 @@ export function adminDashboard({ cycle, stats, tasks, requests, snapshots, split
         ${settingsForm(cycle)}
       </article>
       <article class="panel">
-        <div class="section-head"><h2>Department split</h2><span class="muted">Latest only</span></div>
-        ${deptBars(split)}
+        <div class="section-head"><h2>Email readiness</h2>${gmailPill(gmail)}</div>
+        ${gmailPanel(gmail)}
       </article>
     </section>
     <section class="grid two">
+      <article class="panel">
+        <div class="section-head"><h2>Department split</h2><span class="muted">Latest only</span></div>
+        ${deptBars(split)}
+      </article>
       <article class="panel">
         <div class="section-head"><h2>Tasks</h2><a class="secondary small" href="/admin/tasks">Open all</a></div>
         ${taskList(tasks)}
@@ -255,6 +260,25 @@ export function adminDashboard({ cycle, stats, tasks, requests, snapshots, split
 
 function metricCard(label, value, context, tone = "blue") {
   return `<div class="metric-card ${escapeAttr(tone)}"><small>${escapeHtml(label)}</small><b>${Number(value || 0)}</b><span>${escapeHtml(context || "")}</span></div>`;
+}
+
+function gmailPill(gmail) {
+  return gmail?.configured ? `<span class="pill good">Connected</span>` : `<span class="pill bad">OAuth missing</span>`;
+}
+
+function gmailPanel(gmail) {
+  if (gmail?.configured) {
+    return `<div class="gmail-panel connected">
+      <b>Gmail actions are ready.</b>
+      <span>Sender: ${escapeHtml(gmail.sender || "-")}</span>
+    </div>`;
+  }
+  const missing = gmail?.missing?.length ? gmail.missing : ["GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "GMAIL_REFRESH_TOKEN"];
+  return `<div class="gmail-panel">
+    <b>Sending, drafts, and reply sync are paused.</b>
+    <span>Add these GitHub secrets, then push or rerun deploy:</span>
+    <div class="chips">${missing.map((name) => `<span class="tag bad">${escapeHtml(name)}</span>`).join("")}</div>
+  </div>`;
 }
 
 function workflowProgress(stats) {
@@ -373,24 +397,30 @@ function adminEditForm(row, data) {
   </form>`;
 }
 
-export function adminApprovals({ requests }) {
+export function adminApprovals({ requests, gmail, notice = "", noticeTone = "" }) {
   return `
     <header class="top"><div><p class="eyebrow">Approvals</p><h1>Manager and function threads</h1></div></header>
+    ${notice ? `<div class="notice ${escapeAttr(noticeTone)}">${escapeHtml(notice)}</div>` : ""}
+    <section class="panel gmail-readiness">
+      <div class="section-head"><h2>Gmail readiness</h2>${gmailPill(gmail)}</div>
+      ${gmailPanel(gmail)}
+    </section>
     <section class="grid three">
       <form class="panel action-panel" method="post" action="/admin/approvals/manager/prepare"><h2>Manager prep</h2><p>Create one grouped request per manager. Team 1 managers skipped.</p><button class="primary">Prepare manager drafts</button></form>
       <form class="panel action-panel" method="post" action="/admin/approvals/function/prepare"><h2>Function prep</h2><p>Allowed only when each applicant is manager approved, rejected with reason, or Team 1 skipped.</p><button class="primary">Prepare function drafts</button></form>
-      <form class="panel action-panel" method="post" action="/admin/gmail/sync"><h2>Gmail sync</h2><p>Reads natural replies and auto-marks only clear approvals.</p><button class="secondary">Sync replies</button></form>
+      <form class="panel action-panel" method="post" action="/admin/gmail/sync"><h2>Gmail sync</h2><p>Reads natural replies and auto-marks only clear approvals.</p><button class="secondary" ${gmail?.configured ? "" : "disabled"}>Sync replies</button></form>
     </section>
     <section class="panel">
       <div class="section-head"><h2>Threads</h2><span class="muted">Send test first, then live</span></div>
       <div class="table-wrap"><table>
         <thead><tr><th>Stage</th><th>Reviewer</th><th>Status</th><th>Items</th><th>Due</th><th>Email</th></tr></thead>
-        <tbody>${requests.map(requestRow).join("") || `<tr><td colspan="6">No approval requests yet.</td></tr>`}</tbody>
+        <tbody>${requests.map((row) => requestRow(row, gmail)).join("") || `<tr><td colspan="6">No approval requests yet.</td></tr>`}</tbody>
       </table></div>
     </section>`;
 }
 
-function requestRow(row) {
+function requestRow(row, gmail) {
+  const disabled = gmail?.configured ? "" : "disabled";
   return `<tr>
     <td>${escapeHtml(row.stage)}</td>
     <td><a href="/review/${row.review_token}"><b>${escapeHtml(row.reviewer_name)}</b></a><br><span>${escapeHtml(row.reviewer_email)}</span></td>
@@ -398,9 +428,9 @@ function requestRow(row) {
     <td>${Number(row.item_count || 0)} items<br><span>${Number(row.pending_count || 0)} pending</span></td>
     <td>${localStamp(row.due_at)}</td>
     <td>
-      <form class="mini" method="post" action="/admin/approvals/${row.id}/test"><input name="test_to" placeholder="test@example.com"><button class="secondary small">Send test</button></form>
-      <form class="mini" method="post" action="/admin/approvals/${row.id}/send"><button class="primary small">Send live</button></form>
-      <form class="mini" method="post" action="/admin/approvals/${row.id}/draft"><button class="secondary small">Create draft</button></form>
+      <form class="mini" method="post" action="/admin/approvals/${row.id}/test"><input name="test_to" placeholder="test@example.com" ${disabled}><button class="secondary small" ${disabled}>Send test</button></form>
+      <form class="mini" method="post" action="/admin/approvals/${row.id}/send"><button class="primary small" ${disabled}>Send live</button></form>
+      <form class="mini" method="post" action="/admin/approvals/${row.id}/draft"><button class="secondary small" ${disabled}>Create draft</button></form>
     </td>
   </tr>`;
 }
@@ -716,9 +746,21 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
   flex-direction:column;
   gap:22px;
 }
-.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.brand{display:grid;gap:10px;min-width:0}
 .brand b{display:block;font-size:18px;line-height:1.15}
 .brand small{display:block;margin-top:3px;color:#aebdcb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.brand-copy{padding:0 2px}
+.logo-tile{
+  display:block;
+  width:min(244px,100%);
+  border-radius:8px;
+  background:#fff;
+  border:1px solid rgba(255,255,255,.16);
+  padding:8px 10px;
+  box-shadow:0 10px 24px rgba(0,0,0,.12);
+  overflow:hidden;
+}
+.logo-tile img{display:block;width:100%;height:auto;max-width:100%;object-fit:contain}
 .mark{
   width:43px;
   height:43px;
@@ -875,6 +917,17 @@ main{min-width:0;padding:28px;max-width:1480px;width:100%;margin:0 auto}
 .metric-card small{color:var(--muted);font-weight:850;text-transform:uppercase;font-size:12px;letter-spacing:0}
 .metric-card b{font-size:34px;line-height:1.02}
 .metric-card span{color:var(--muted)}
+.gmail-readiness{margin-bottom:18px}
+.gmail-panel{
+  display:grid;
+  gap:8px;
+  border:1px solid var(--line);
+  background:var(--surface-3);
+  border-radius:8px;
+  padding:14px;
+}
+.gmail-panel.connected{background:var(--green-soft);border-color:#a7dac8}
+.gmail-panel span{color:var(--muted)}
 .section-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:13px}
 .section-head h2{margin:0}
 .actions{display:flex;gap:9px;flex-wrap:wrap;align-items:center}

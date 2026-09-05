@@ -1,4 +1,5 @@
 import { DEFAULT_ADMIN_EMAIL, DEFAULT_ORG_EMAIL_DOMAIN } from "./constants.js";
+import { MULTIPLIERS_LOGO_DATA_URI } from "./logo.js";
 import { clean, escapeAttr, escapeHtml, html, norm } from "./util.js";
 
 const TEST_COOKIE = "multipliers_test_auth";
@@ -206,8 +207,8 @@ function testLoginPage({ error = "", next = "/admin", profile = "admin" }) {
     *{box-sizing:border-box}
     body{margin:0;min-height:100vh;display:grid;place-items:center;background:linear-gradient(135deg,#f8fbfc 0,#eef5f1 54%,#f2f0fb 100%);padding:24px}
     main{width:min(460px,100%);background:#fff;border:1px solid #d8e0e7;border-radius:8px;box-shadow:0 18px 48px rgba(18,32,50,.10);padding:24px}
-    .mark{width:44px;height:44px;background:#142033;display:grid;grid-template-columns:repeat(2,1fr);gap:5px;padding:7px;border-radius:8px;margin-bottom:18px}
-    .mark i{border-radius:3px}.mark i:nth-child(1){background:#ffd166}.mark i:nth-child(2){background:#5db6a4}.mark i:nth-child(3){background:#ef6f61}.mark i:nth-child(4){background:#7aa5df}
+    .logo{display:block;width:min(270px,100%);margin-bottom:22px}
+    .logo img{display:block;width:100%;height:auto}
     h1{font-size:28px;line-height:1.1;margin:0 0 8px;letter-spacing:0}
     p{margin:0 0 18px;color:#64717e;line-height:1.45}
     label{display:block;margin:0 0 13px;font-weight:760}
@@ -221,7 +222,7 @@ function testLoginPage({ error = "", next = "/admin", profile = "admin" }) {
 </head>
 <body>
   <main>
-    <span class="mark"><i></i><i></i><i></i><i></i></span>
+    <span class="logo"><img src="${MULTIPLIERS_LOGO_DATA_URI}" alt="Multipliers"></span>
     <h1>Temporary test access</h1>
     <p>Use the temporary code to preview Multipliers OS without company login during this test phase.</p>
     ${error ? `<div class="error">${escapeHtml(error)}</div>` : ""}

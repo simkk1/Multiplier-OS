@@ -5,6 +5,36 @@ export function gmailConfigured(env) {
   return Boolean(env.GMAIL_CLIENT_ID && env.GMAIL_CLIENT_SECRET && env.GMAIL_REFRESH_TOKEN);
 }
 
+export function gmailStatus(env) {
+  const missing = [
+    ["GMAIL_CLIENT_ID", env.GMAIL_CLIENT_ID],
+    ["GMAIL_CLIENT_SECRET", env.GMAIL_CLIENT_SECRET],
+    ["GMAIL_REFRESH_TOKEN", env.GMAIL_REFRESH_TOKEN],
+  ].filter(([, value]) => !value).map(([name]) => name);
+  return {
+    configured: missing.length === 0,
+    missing,
+    sender: env.GMAIL_SENDER || DEFAULT_SENDER_EMAIL,
+  };
+}
+
+export function gmailErrorMessage(error) {
+  const message = String(error?.message || error || "");
+  if (message.includes("Gmail env missing") || message.includes("Gmail is not configured")) {
+    return "Gmail is not connected yet. Add GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, and GMAIL_REFRESH_TOKEN before sending, drafting, or syncing email.";
+  }
+  if (message.includes("invalid_client") || /Gmail auth failed:\s*401/i.test(message)) {
+    return "Gmail rejected the OAuth client. The client ID, client secret, and refresh token must come from the same Google OAuth app.";
+  }
+  if (message.includes("invalid_grant")) {
+    return "Gmail refresh token is invalid, revoked, expired, or was issued for a different OAuth client. Reconnect Gmail and save a new refresh token.";
+  }
+  if (/Gmail .* failed:/i.test(message)) {
+    return message.slice(0, 700);
+  }
+  return `Gmail action failed: ${message.slice(0, 700)}`;
+}
+
 export async function sendGmail(env, { to, cc = "", subject, body, threadId = "" }) {
   const token = await gmailAccessToken(env);
   const raw = buildRawEmail({
@@ -65,6 +95,10 @@ export async function getThread(env, threadId) {
 }
 
 async function gmailAccessToken(env) {
+  const status = gmailStatus(env);
+  if (!status.configured) {
+    throw new Error(`Gmail is not configured. Missing: ${status.missing.join(", ")}`);
+  }
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -76,10 +110,18 @@ async function gmailAccessToken(env) {
     }),
   });
   if (!res.ok) {
-    throw new Error(`Gmail auth failed: ${res.status} ${await res.text()}`);
+    throw new Error(`Gmail auth failed: ${res.status} ${await safeResponseText(res)}`);
   }
   const data = await res.json();
   return data.access_token;
+}
+
+async function safeResponseText(res) {
+  try {
+    return await res.text();
+  } catch {
+    return "";
+  }
 }
 
 function buildRawEmail({ from, to, cc, subject, body }) {

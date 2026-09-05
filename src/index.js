@@ -2,6 +2,7 @@ import {
   auditForEntity,
   auditList,
   completeTask,
+  createTask,
   addRoute,
   addTeam1Manager,
   dashboardStats,
@@ -37,7 +38,7 @@ import {
   sendOrDraftRequest,
   syncGmailReplies,
 } from "./approvals.js";
-import { gmailConfigured, sendGmail } from "./email.js";
+import { gmailConfigured, gmailErrorMessage, gmailStatus, sendGmail } from "./email.js";
 import { makeXlsx } from "./xlsx.js";
 import {
   adminApprovals,
@@ -157,7 +158,7 @@ async function adminRoute(request, env, cycle, user) {
       listApprovalRequests(env, cycle.id),
       listSnapshots(env, cycle.id),
     ]);
-    return page({ title: "Admin", user, cycle, active: "admin", content: adminDashboard({ cycle, stats, tasks, requests, snapshots, split }) });
+    return page({ title: "Admin", user, cycle, active: "admin", content: adminDashboard({ cycle, stats, tasks, requests, snapshots, split, gmail: gmailStatus(env) }) });
   }
 
   if (path === "/admin/settings" && request.method === "POST") {
@@ -206,7 +207,18 @@ async function adminRoute(request, env, cycle, user) {
 
   if (path === "/admin/approvals" && request.method === "GET") {
     const requests = await listApprovalRequests(env, cycle.id);
-    return page({ title: "Approvals", user, cycle, active: "approvals", content: adminApprovals({ requests }) });
+    return page({
+      title: "Approvals",
+      user,
+      cycle,
+      active: "approvals",
+      content: adminApprovals({
+        requests,
+        gmail: gmailStatus(env),
+        notice: url.searchParams.get("notice") || "",
+        noticeTone: url.searchParams.get("tone") || "",
+      }),
+    });
   }
 
   if (path === "/admin/approvals/manager/prepare" && request.method === "POST") {
@@ -224,13 +236,23 @@ async function adminRoute(request, env, cycle, user) {
     const data = await formData(request);
     const mode = approvalSend[2] === "draft" ? "draft" : "send";
     const testTo = approvalSend[2] === "test" ? data.test_to || cycle.admin_email : "";
-    await sendOrDraftRequest(env, cycle, Number(approvalSend[1]), mode, testTo);
-    return redirect("/admin/approvals");
+    try {
+      await sendOrDraftRequest(env, cycle, Number(approvalSend[1]), mode, testTo);
+      return redirectWithNotice("/admin/approvals", approvalSend[2] === "draft" ? "Gmail draft created." : "Gmail sent.", "good");
+    } catch (error) {
+      const message = await recordGmailFailure(env, cycle, error, `${approvalSend[2]} approval request`);
+      return redirectWithNotice("/admin/approvals", message, "bad");
+    }
   }
 
   if (path === "/admin/gmail/sync" && request.method === "POST") {
-    await syncGmailReplies(env, cycle);
-    return redirect("/admin/approvals");
+    try {
+      const count = await syncGmailReplies(env, cycle);
+      return redirectWithNotice("/admin/approvals", `Gmail sync complete. ${count} new replies processed.`, "good");
+    } catch (error) {
+      const message = await recordGmailFailure(env, cycle, error, "sync Gmail replies");
+      return redirectWithNotice("/admin/approvals", message, "bad");
+    }
   }
 
   if (path === "/admin/routes" && request.method === "GET") {
@@ -306,6 +328,20 @@ async function reviewRoute(request, env, cycle, token) {
   return html(reviewPage({ request: fresh, items, message: request.method === "POST" ? "Saved." : "" }));
 }
 
+async function recordGmailFailure(env, cycle, error, context) {
+  const message = gmailErrorMessage(error);
+  await createTask(env, cycle.id, null, null, "gmail_setup", "Connect Gmail OAuth", `${context}: ${message}`, "blocker", "");
+  return message;
+}
+
+function redirectWithNotice(path, message, tone = "") {
+  const params = new URLSearchParams({ notice: message });
+  if (tone) {
+    params.set("tone", tone);
+  }
+  return redirect(`${path}?${params.toString()}`);
+}
+
 async function apiRoute(request, env, cycle, user) {
   const adminBlock = requireAdmin(user, request, env);
   if (adminBlock) {
@@ -377,15 +413,19 @@ async function runScheduled(env) {
   await enforceWindow(env, cycle);
   try {
     await syncGmailReplies(env, cycle);
-  } catch {
-    // Gmail may be unset during setup.
+  } catch (error) {
+    await recordGmailFailure(env, cycle, error, "scheduled Gmail sync");
   }
   try {
     await remindersAndEscalations(env, cycle);
-  } catch {
-    // Keep daily task digest alive even if Gmail thread read fails.
+  } catch (error) {
+    await recordGmailFailure(env, cycle, error, "scheduled approval reminders");
   }
-  await sendDailyDigest(env, cycle);
+  try {
+    await sendDailyDigest(env, cycle);
+  } catch (error) {
+    await recordGmailFailure(env, cycle, error, "daily admin digest");
+  }
 }
 
 async function sendDailyDigest(env, cycle) {
