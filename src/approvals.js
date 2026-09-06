@@ -247,7 +247,8 @@ function managerBody(cycle, group, reviewUrl) {
       `AOP: ${data.aop || "-"}`,
       `Multiplier target: ${data.multiplier_target || "-"}`,
       `Team vision: ${data.team_vision || "-"}`,
-      `Flywheel: ${data.flywheel || "-"}`,
+      `Flywheel parts: ${data.flywheel_parts || "-"}`,
+      `Flywheel explanation: ${data.flywheel || "-"}`,
     ].join("\n");
   });
   return `Hi ${group.reviewer_name},
@@ -288,6 +289,8 @@ function functionBody(cycle, group, reviewUrl) {
         `Baseline: ${data.baseline || "-"}`,
         `AOP: ${data.aop || "-"}`,
         `Multiplier target: ${data.multiplier_target || "-"}`,
+        `Flywheel parts: ${data.flywheel_parts || "-"}`,
+        `Flywheel explanation: ${data.flywheel || "-"}`,
       ].join("\n");
     });
     return `${sub}\n${items.join("\n\n")}`;

@@ -320,6 +320,7 @@ function normalizeSubmissionData(user, input) {
     baseline: clean(input.baseline),
     aop: clean(input.aop),
     team_vision: clean(input.team_vision),
+    flywheel_parts: clean(input.flywheel_parts),
     flywheel: clean(input.flywheel),
     manager_aligned: parseBool(input.manager_aligned) ? "yes" : "",
     support_required: clean(input.support_required),

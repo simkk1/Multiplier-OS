@@ -69,6 +69,7 @@ export const REQUIRED_FIELDS = [
   "baseline",
   "aop",
   "team_vision",
+  "flywheel_parts",
   "flywheel",
   "manager_aligned",
 ];

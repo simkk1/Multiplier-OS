@@ -3,6 +3,28 @@ import { DEFAULT_FUNCTION_SUB_FUNCTIONS, DEFAULT_FUNCTIONS, DEFAULT_SUB_FUNCTION
 import { MULTIPLIERS_LOGO_DATA_URI } from "./logo.js";
 import { escapeAttr, escapeHtml, flagLabels, inputDateTime, localStamp, rowData, safeJsonParse } from "./util.js";
 
+const HOME_BENEFITS = [
+  ["Sharper bet", "Turn one stretch outcome into a number, baseline, and timeline your manager can actually approve."],
+  ["Cleaner alignment", "Your latest version travels through manager and function approvals with every change preserved."],
+  ["Focused unblockers", "Call out special help only when the Multipliers team needs to actively unblock something."],
+  ["Visible recognition", "Past cycles have celebrated winners, repeat winners, and standout projects across Mosaic channels."],
+];
+
+const PAST_MULTIPLIER_WINNERS = [
+  ["Kedar Mulmule", "Multi-time Multiplier winner"],
+  ["Rupali Goel", "Multi-time Multiplier winner"],
+  ["Navin Das", "Multi-time winner"],
+  ["Riya Bhakshi", "Multi-time winner"],
+];
+
+const PAST_HACKATHON_WINNERS = [
+  ["Abhijeet Mittal", "Multi-time Hackathon winner"],
+  ["Chhitij Saraswat", "Hackathon winner"],
+  ["Jaspreet Singh Alag", "Hackathon winner"],
+  ["Sumed Parab", "Hackathon winner"],
+  ["Vishnupriya Jha", "Hackathon winner"],
+];
+
 export function layout({ title, user, cycle, active = "home", content }) {
   const admin = user.isAdmin;
   const nav = admin
@@ -17,6 +39,7 @@ export function layout({ title, user, cycle, active = "home", content }) {
         ["/", "Home", "home"],
         ["/apply", "Application", "apply"],
         ["/status", "Status", "status"],
+        ["/winners", "Past Winners", "winners"],
       ];
   return `<!doctype html>
 <html lang="en">
@@ -115,10 +138,15 @@ export function applicantHome({ user, cycle, submission, stats, split }) {
     </section>
 
     <section class="experience-path">
-      ${experienceStep("1", "Choose your lane", hasSubmission ? "Function and manager are saved." : "Pick your function and sub-function.")}
-      ${experienceStep("2", "Shape the target", "Regular OKR, baseline, AOP, and multiplier target.")}
-      ${experienceStep("3", "Get aligned", hasSubmission ? "Track manager and function approvals." : "Confirm manager alignment before you submit.")}
+      ${experienceStep("1", "Start with your team", hasSubmission ? "Your function, sub-function, and manager are saved." : "Pick your function, sub-function, and manager cleanly.")}
+      ${experienceStep("2", "Make the number real", "Write the OKR, baseline, AOP, and multiplier target with details.")}
+      ${experienceStep("3", "Choose the flywheel", "Select the business loop you are moving, then explain how.")}
+      ${experienceStep("4", "Track the journey", hasSubmission ? "Follow manager, function, and final status here." : "Submit once. Versions and approvals stay linked.")}
     </section>
+
+    ${aboutMultipliers(cycle, hasSubmission)}
+    ${whatsInItSection()}
+    ${winnerTeaser()}
 
     <section class="grid two">
       <article class="panel applicant-panel">
@@ -143,6 +171,75 @@ function experienceStep(number, title, detail) {
     <span>${escapeHtml(number)}</span>
     <b>${escapeHtml(title)}</b>
     <small>${escapeHtml(detail)}</small>
+  </article>`;
+}
+
+function aboutMultipliers(cycle, hasSubmission) {
+  const cycleLabel = cycle.quarter_label || cycle.name || "Current cycle";
+  return `<section class="home-program">
+    <article class="program-story">
+      <p class="eyebrow">About Multipliers</p>
+      <h2>One quarter. One brave, measurable business bet.</h2>
+      <p>Multipliers are for work that sits beside your regular OKR and can move the business meaningfully if it lands. The OS keeps the admin work quiet: saved drafts, latest-version tracking, manager approvals, function-head approvals, and the final participant dataset.</p>
+    </article>
+    <article class="program-note">
+      <small>${escapeHtml(cycleLabel)}</small>
+      <b>${hasSubmission ? "Your case is already in motion." : "Start when the target is sharp."}</b>
+      <span>${hasSubmission ? "Come back here for rework, approvals, and final cycle visibility." : "A strong application reads like a crisp business case, not a long essay."}</span>
+    </article>
+  </section>`;
+}
+
+function whatsInItSection() {
+  return `<section class="value-section">
+    <div class="section-head">
+      <h2>What's in it for you</h2>
+      <a class="secondary small" href="/winners">See past winners</a>
+    </div>
+    <div class="value-grid">
+      ${HOME_BENEFITS.map(([title, detail]) => `<article class="value-card"><b>${escapeHtml(title)}</b><span>${escapeHtml(detail)}</span></article>`).join("")}
+    </div>
+  </section>`;
+}
+
+function winnerTeaser() {
+  const names = PAST_MULTIPLIER_WINNERS.slice(0, 4).map(([name]) => name).join(", ");
+  return `<section class="winner-tease">
+    <div>
+      <p class="eyebrow">Past winners</p>
+      <h2>A growing Mosaic wall of sharp bets.</h2>
+      <p>Historical notes include repeat winners like ${escapeHtml(names)}. This starts as a clean wall now, and can become a richer archive with project briefs as the OS grows.</p>
+    </div>
+    <a class="primary" href="/winners">Open winner wall</a>
+  </section>`;
+}
+
+export function pastWinnersPage({ cycle }) {
+  return `
+    <section class="program-page-hero">
+      <div>
+        <p class="eyebrow">Past winners</p>
+        <h1>The Multipliers wall.</h1>
+        <p>A starter archive from historical Mosaic notes. This keeps recognition visible while we later add admin controls for projects, seasons, certificates, and Central links.</p>
+      </div>
+      <div class="program-page-card">
+        <small>Cycle context</small>
+        <b>${escapeHtml(cycle.quarter_label || cycle.name)}</b>
+        <span>Current application cycle stays separate from the historic wall.</span>
+      </div>
+    </section>
+    <section class="winner-wall">
+      ${winnerGroup("Multiplier winners", PAST_MULTIPLIER_WINNERS)}
+      ${winnerGroup("Hackathon winners", PAST_HACKATHON_WINNERS)}
+    </section>`;
+}
+
+function winnerGroup(title, winners) {
+  return `<article class="winner-group">
+    <div class="section-head"><h2>${escapeHtml(title)}</h2><span class="muted">${Number(winners.length)} names</span></div>
+    <div class="winner-grid">
+      ${winners.map(([name, note]) => `<div class="winner-card"><b>${escapeHtml(name)}</b><span>${escapeHtml(note)}</span></div>`).join("")}
+    </div>
   </article>`;
 }
 
@@ -457,6 +554,9 @@ function renderApplicantField(fieldDef, { data, user, cycle, canEdit, routeOptio
     if (fieldDef.kind === "textarea") {
       return textarea(fieldDef.label, fieldDef.name, value, enabled, required, fieldDef.help, fieldDef.example);
     }
+    if (fieldDef.kind === "checkboxGroup") {
+      return checkboxGroup(fieldDef.label, fieldDef.name, value, fieldDef.options || [], enabled, required, fieldDef.help, fieldDef.example);
+    }
     if (fieldDef.kind === "checkbox") {
       const checked = Boolean(value);
       return `<label class="check alignment-check"><input type="checkbox" name="${escapeAttr(fieldDef.name)}" ${checked ? "checked" : ""} ${enabled ? "" : "disabled"} ${required ? "required" : ""}><span>${escapeHtml(fieldDef.label)}${required ? " *" : ""}</span>${fieldMeta(fieldDef.help, fieldDef.example)}</label>`;
@@ -623,7 +723,8 @@ function adminEditForm(row, data) {
     ${textarea("Baseline", "baseline", data.baseline, true, true)}
     ${textarea("AOP", "aop", data.aop, true, true)}
     ${textarea("Team vision", "team_vision", data.team_vision, true, true)}
-    ${textarea("Flywheel", "flywheel", data.flywheel, true, true)}
+    ${textarea("Flywheel parts", "flywheel_parts", data.flywheel_parts, true, true)}
+    ${textarea("Flywheel explanation", "flywheel", data.flywheel, true, true)}
     <label class="check full"><input type="checkbox" name="manager_aligned" ${data.manager_aligned ? "checked" : ""}><span>Manager aligned</span></label>
     ${textarea("Support required", "support_required", data.support_required, true, false)}
     <button class="primary full">Save admin edit</button>
@@ -791,7 +892,8 @@ function compactDetails(data) {
     ["Baseline", data.baseline],
     ["AOP", data.aop],
     ["Team vision", data.team_vision],
-    ["Flywheel", data.flywheel],
+    ["Flywheel parts", data.flywheel_parts],
+    ["Flywheel explanation", data.flywheel],
     ["Support", data.support_required],
   ];
   return `<dl class="details">${fields.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v || "-")}</dd>`).join("")}</dl>`;
@@ -896,6 +998,27 @@ function textarea(label, name, value, enabled, required, help = "", example = ""
   return `<label class="full"><span>${escapeHtml(label)}${required ? " *" : ""}</span>${fieldMeta(help, example)}<textarea name="${name}" ${enabled ? "" : "readonly"} ${required ? "required" : ""}>${escapeHtml(value || "")}</textarea></label>`;
 }
 
+function checkboxGroup(label, name, value, options, enabled, required, help = "", example = "") {
+  const selected = selectedValues(value);
+  const choices = sortChoices(options);
+  return `<fieldset class="checkbox-field full" data-checkbox-group="${escapeAttr(name)}" ${required ? "data-required-group=\"true\"" : ""}>
+    <legend>${escapeHtml(label)}${required ? " *" : ""}</legend>
+    ${fieldMeta(help, example)}
+    <div class="checkbox-grid">
+      ${choices.map((choice) => {
+        const checked = selected.has(choice.toLowerCase());
+        return `<label class="choice-check"><input type="checkbox" name="${escapeAttr(name)}" value="${escapeAttr(choice)}" ${checked ? "checked" : ""} ${enabled ? "" : "disabled"}><span>${escapeHtml(choice)}</span></label>`;
+      }).join("")}
+    </div>
+    ${!enabled && value ? `<input type="hidden" name="${escapeAttr(name)}" value="${escapeAttr(value)}">` : ""}
+  </fieldset>`;
+}
+
+function selectedValues(value) {
+  const parts = Array.isArray(value) ? value : String(value || "").split(/\s*;\s*/);
+  return new Set(parts.map((part) => part.trim().toLowerCase()).filter(Boolean));
+}
+
 function fieldMeta(help = "", example = "") {
   return `${help ? `<small>${escapeHtml(help)}</small>` : ""}${example ? `<small class="field-example">${escapeHtml(example)}</small>` : ""}`;
 }
@@ -997,6 +1120,16 @@ function clientScript() {
       fill();
     });
     fill();
+  }
+  for (const group of document.querySelectorAll("[data-required-group='true']")) {
+    const boxes = Array.from(group.querySelectorAll("input[type='checkbox']"));
+    if (!boxes.length || boxes[0].disabled) continue;
+    const setValidity = () => {
+      const checked = boxes.some((box) => box.checked);
+      boxes[0].setCustomValidity(checked ? "" : "Pick at least one option.");
+    };
+    boxes.forEach((box) => box.addEventListener("change", setValidity));
+    setValidity();
   }
 })();
 `;
@@ -1388,11 +1521,11 @@ body.applicant-mode main{
   86%{background-position:100% 0}
 }
 @media(prefers-reduced-motion:reduce){
-  .applicant-hero,.hero-ticket,.hero-ticket i{animation:none}
+  .applicant-hero,.hero-ticket,.hero-ticket i,.program-story,.program-note,.value-section,.winner-tease,.program-page-hero,.winner-group{animation:none}
 }
 .experience-path{
   display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-template-columns:repeat(4,minmax(0,1fr));
   gap:12px;
   margin-bottom:18px;
 }
@@ -1419,6 +1552,141 @@ body.applicant-mode main{
 }
 .experience-path b{line-height:1.2}
 .experience-path small{grid-column:2;color:var(--muted)}
+.home-program{
+  display:grid;
+  grid-template-columns:minmax(0,1.45fr) minmax(250px,.55fr);
+  gap:16px;
+  align-items:stretch;
+  margin-bottom:18px;
+}
+.program-story,.program-note,.value-section,.winner-tease,.program-page-hero,.winner-group{
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:8px;
+  box-shadow:var(--shadow-soft);
+  animation:riseIn .62s cubic-bezier(.2,.8,.2,1) both;
+}
+.program-story{
+  padding:26px;
+}
+.program-story h2,.value-section h2,.winner-tease h2,.program-page-hero h1{
+  margin:0;
+  letter-spacing:0;
+  line-height:1.08;
+}
+.program-story h2{font-size:30px;max-width:760px}
+.program-story p:not(.eyebrow),.winner-tease p,.program-page-hero p{
+  margin:12px 0 0;
+  color:#53635c;
+  font-size:16px;
+  line-height:1.6;
+  max-width:760px;
+}
+.program-note{
+  padding:22px;
+  display:grid;
+  align-content:end;
+  gap:8px;
+  background:
+    linear-gradient(180deg,rgba(231,245,239,.72),rgba(255,255,255,.96)),
+    #fff;
+}
+.program-note small{
+  color:#16785f;
+  font-weight:850;
+  text-transform:uppercase;
+  font-size:12px;
+}
+.program-note b{font-size:24px;line-height:1.12}
+.program-note span{color:var(--muted)}
+.value-section{
+  padding:22px;
+  margin-bottom:18px;
+}
+.value-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:12px;
+}
+.value-card{
+  border-top:1px solid #dfe8e3;
+  padding-top:14px;
+  min-height:118px;
+  display:grid;
+  gap:8px;
+  align-content:start;
+  transition:transform .16s ease,border-color .16s ease;
+}
+.value-card:hover{transform:translateY(-2px);border-color:#b8d5c9}
+.value-card b{font-size:17px}
+.value-card span{color:#5c6b64}
+.winner-tease{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:18px;
+  padding:24px 26px;
+  margin-bottom:18px;
+  background:
+    linear-gradient(135deg,rgba(15,59,53,.06),rgba(39,100,168,.06)),
+    #fff;
+}
+.winner-tease h2{font-size:26px}
+.winner-tease .primary{white-space:nowrap}
+.program-page-hero{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(240px,320px);
+  gap:22px;
+  align-items:end;
+  padding:34px;
+  margin-bottom:18px;
+  background:
+    linear-gradient(135deg,rgba(15,59,53,.08),rgba(231,245,239,.86)),
+    #fff;
+}
+.program-page-hero h1{font-size:42px}
+.program-page-card{
+  border:1px solid #cdded7;
+  border-radius:8px;
+  padding:18px;
+  background:rgba(255,255,255,.78);
+  display:grid;
+  gap:7px;
+}
+.program-page-card small{
+  color:#16785f;
+  font-weight:850;
+  text-transform:uppercase;
+  font-size:12px;
+}
+.program-page-card b{font-size:25px;line-height:1.12}
+.program-page-card span{color:var(--muted)}
+.winner-wall{
+  display:grid;
+  gap:18px;
+}
+.winner-group{
+  padding:22px;
+}
+.winner-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:12px;
+}
+.winner-card{
+  min-height:104px;
+  border:1px solid #dce7e2;
+  border-radius:8px;
+  padding:16px;
+  background:#fbfdfb;
+  display:grid;
+  align-content:end;
+  gap:5px;
+  transition:transform .16s ease,border-color .16s ease,background .16s ease;
+}
+.winner-card:hover{transform:translateY(-2px);border-color:#afd2c2;background:#f5fbf8}
+.winner-card b{font-size:18px}
+.winner-card span{color:var(--muted)}
 .applicant-panel{min-height:210px}
 .home-actions{display:flex;gap:9px;flex-wrap:wrap}
 .snapshot{
@@ -1589,6 +1857,60 @@ body.applicant-mode main{
 }
 .form-sheet .alignment-check input{margin-top:2px}
 .form-sheet .alignment-check span,.form-sheet .alignment-check small{grid-column:2}
+.checkbox-field{
+  border:0;
+  padding:0;
+  margin:0;
+  min-width:0;
+}
+.checkbox-field legend{
+  display:block;
+  width:100%;
+  margin:0 0 7px;
+  color:#1e302b;
+  font-weight:850;
+}
+.checkbox-field small{
+  display:block;
+  margin:0 0 10px;
+  color:#64746d;
+  font-size:13px;
+  line-height:1.4;
+  max-width:640px;
+}
+.checkbox-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+.choice-check{
+  display:grid !important;
+  grid-template-columns:18px minmax(0,1fr);
+  gap:9px;
+  align-items:start;
+  min-height:48px;
+  padding:12px;
+  border:1px solid #d5e2dc;
+  border-radius:8px;
+  background:#fbfdfb;
+  transition:border-color .16s ease,background .16s ease,box-shadow .16s ease;
+}
+.choice-check:hover{
+  border-color:#a9cbbb;
+  background:#f3faf6;
+  box-shadow:0 8px 18px rgba(15,59,53,.06);
+}
+.choice-check input{
+  width:18px;
+  height:18px;
+  margin:1px 0 0;
+  accent-color:var(--green);
+}
+.choice-check span{
+  margin:0 !important;
+  font-weight:760 !important;
+  line-height:1.25;
+}
 .form-submit-card{
   display:flex;
   justify-content:flex-end;
@@ -2017,11 +2339,12 @@ td b{font-weight:850}
   .shell{grid-template-columns:244px minmax(0,1fr)}
   .metrics,.workflow-progress,.journey,.stage-board,.experience-path{grid-template-columns:repeat(2,minmax(0,1fr))}
   .ops-strip{grid-template-columns:1fr}
-  .welcome-band,.cockpit-band,.applicant-hero{grid-template-columns:1fr}
+  .welcome-band,.cockpit-band,.applicant-hero,.home-program,.program-page-hero{grid-template-columns:1fr}
   .applicant-hero{gap:36px;min-height:auto;padding:46px}
   .welcome-status{justify-self:stretch}
   .applicant-hero:after{display:none}
   .hero-ticket{max-width:420px;min-height:auto;padding:22px}
+  .value-grid,.winner-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .form-cover{grid-template-columns:1fr}
   .form-cover-meta{border-left:0;border-top:1px solid var(--line);padding:18px 0 0}
 }
@@ -2085,6 +2408,9 @@ td b{font-weight:850}
   .top h1{font-size:26px;overflow-wrap:anywhere}
   .top .actions,.top .actions form{width:100%}
   .metrics,.workflow-progress,.journey,.status-grid,.stage-board,.experience-path,.snapshot{grid-template-columns:1fr}
+  .value-grid,.winner-grid,.checkbox-grid{grid-template-columns:1fr}
+  .winner-tease{display:grid}
+  .winner-tease .primary{width:100%}
   .attention-list li{grid-template-columns:10px minmax(0,1fr)}
   .attention-list a{grid-column:2;justify-self:start}
   .ops-numbers{grid-template-columns:1fr}

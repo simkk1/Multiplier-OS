@@ -57,7 +57,12 @@ export async function formData(request) {
   const form = await request.formData();
   const out = {};
   for (const [key, value] of form.entries()) {
-    out[key] = clean(value);
+    const next = clean(value);
+    if (Object.prototype.hasOwnProperty.call(out, key)) {
+      out[key] = [out[key], next].filter(Boolean).join("; ");
+    } else {
+      out[key] = next;
+    }
   }
   return out;
 }

@@ -49,6 +49,7 @@ import {
   applicantStatus,
   auditPage,
   layout,
+  pastWinnersPage,
   reviewPage,
   routesPage,
   tasksPage,
@@ -133,6 +134,10 @@ async function route(request, env, cycle, ctx) {
     const versions = submission ? await getVersions(env, submission.id) : [];
     const tasks = submission ? await listApplicantTasks(env, cycle.id, submission.id) : [];
     return page({ title: "Status", user, cycle, active: "status", content: applicantStatus({ submission, versions, tasks }) });
+  }
+
+  if (path === "/winners" && request.method === "GET") {
+    return page({ title: "Past Winners", user, cycle, active: "winners", content: pastWinnersPage({ cycle }) });
   }
 
   if (path.startsWith("/admin")) {
@@ -362,7 +367,7 @@ async function exportXlsx(env, cycle) {
   const submissions = await getLatestSubmissions(env, cycle.id);
   const finals = await finalParticipants(env, cycle.id);
   const submissionRows = [
-    ["Name", "Email", "Department", "Sub Department", "Manager", "Manager Email", "Regular OKR", "Baseline", "AOP", "Multiplier Target", "Manager Status", "Function Status", "Final Status", "Version", "Updated At"],
+    ["Name", "Email", "Department", "Sub Department", "Manager", "Manager Email", "Regular OKR", "Baseline", "AOP", "Multiplier Target", "Flywheel Parts", "Flywheel Explanation", "Manager Status", "Function Status", "Final Status", "Version", "Updated At"],
     ...submissions.map((row) => {
       const data = rowData(row);
       return [
@@ -376,6 +381,8 @@ async function exportXlsx(env, cycle) {
         data.baseline || "",
         data.aop || "",
         data.multiplier_target || "",
+        data.flywheel_parts || "",
+        data.flywheel || "",
         row.manager_status,
         row.function_status,
         row.final_status,
