@@ -312,7 +312,7 @@ function normalizeSubmissionData(user, input) {
   return {
     applicant_name: clean(input.applicant_name || user.name),
     applicant_email: clean(input.applicant_email || user.email),
-    manager_name: clean(input.manager_name),
+    manager_name: normalizeManagerName(input.manager_name, input.manager_email),
     manager_email: clean(input.manager_email),
     department: clean(input.department),
     sub_department: clean(input.sub_department),
@@ -326,6 +326,45 @@ function normalizeSubmissionData(user, input) {
     manager_aligned: parseBool(input.manager_aligned) ? "yes" : "",
     support_required: clean(input.support_required),
   };
+}
+
+function normalizeManagerName(name, email) {
+  const given = titleCaseName(clean(name));
+  const fromEmail = managerNameFromEmail(email);
+  if (!fromEmail) {
+    return given;
+  }
+  const givenNorm = norm(given);
+  const emailNorm = norm(fromEmail);
+  const givenParts = givenNorm.split(/\s+/).filter(Boolean);
+  const emailParts = emailNorm.split(/\s+/).filter(Boolean);
+  if (!givenNorm || givenNorm === emailNorm) {
+    return fromEmail;
+  }
+  if (givenParts.length < emailParts.length && givenParts[0] === emailParts[0]) {
+    return fromEmail;
+  }
+  if (givenNorm.length <= 8 && emailNorm.startsWith(givenNorm)) {
+    return fromEmail;
+  }
+  return given;
+}
+
+function managerNameFromEmail(email) {
+  const local = clean(email).split("@")[0] || "";
+  const parts = local.split(/[._-]+/).filter((part) => /^[a-z]+$/i.test(part) && part.length > 1);
+  if (parts.length < 2) {
+    return "";
+  }
+  return parts.map(titleCaseWord).join(" ");
+}
+
+function titleCaseName(value) {
+  return value.split(/\s+/).filter(Boolean).map(titleCaseWord).join(" ");
+}
+
+function titleCaseWord(value) {
+  return value ? value[0].toUpperCase() + value.slice(1).toLowerCase() : "";
 }
 
 function validateApplicantInput(data, cycle, flags) {

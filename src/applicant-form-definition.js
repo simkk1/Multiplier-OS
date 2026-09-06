@@ -46,8 +46,6 @@ export const APPLICANT_FORM_DEFINITION = {
           name: "manager_name",
           label: "Manager name",
           required: true,
-          help: "Use the name your manager uses at work.",
-          example: "Example: Minal Jain, not just Minal.",
         },
         {
           kind: "email",
