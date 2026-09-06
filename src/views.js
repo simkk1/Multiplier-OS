@@ -1,4 +1,4 @@
-import { APPLICANT_FORM_DEFINITION, APPLICANT_QUALITY_CHECKS } from "./applicant-form-definition.js";
+import { APPLICANT_FORM_DEFINITION } from "./applicant-form-definition.js";
 import { DEFAULT_FUNCTION_SUB_FUNCTIONS, DEFAULT_FUNCTIONS, DEFAULT_SUB_FUNCTIONS, STATUS_LABELS } from "./constants.js";
 import { MULTIPLIERS_LOGO_DATA_URI } from "./logo.js";
 import { escapeAttr, escapeHtml, flagLabels, inputDateTime, localStamp, rowData, safeJsonParse } from "./util.js";
@@ -221,7 +221,6 @@ export function applicantForm({ user, cycle, submission, routes = [], error = ""
         ${definition.sections.map((section) => `<a href="#${escapeAttr(section.id)}"><span>${escapeHtml(section.number)}</span>${escapeHtml(section.navTitle || section.title)}</a>`).join("")}
       </nav>
       <form method="post" action="/apply" class="application-form form-sheet">
-        ${qualityChecklist(data)}
         ${definition.sections.map((section) => renderApplicantSection(section, { data, user, cycle, canEdit, routeOptions })).join("")}
         <script type="application/json" id="route-options">${jsonScript(routeOptions.byFunction)}</script>
         <div class="form-submit-card">
@@ -256,7 +255,7 @@ export function adminDashboard({ cycle, stats, tasks, requests, snapshots, split
       <div>
         <p class="eyebrow">Admin cockpit</p>
         <h1>${escapeHtml(cycleStateLabel(cycle.state))}</h1>
-        <p class="top-note">${escapeHtml(cycle.name)} · ${Number(stats.total || 0)} latest applicants · ${Number(stats.versions || 0)} saved versions</p>
+        <p class="top-note">${escapeHtml(cycle.name)} - ${Number(stats.total || 0)} latest applicants - ${Number(stats.versions || 0)} saved versions</p>
       </div>
       <div class="actions">
         <a class="secondary" href="/admin/export.xlsx">Export XLSX</a>
@@ -428,23 +427,6 @@ function stageCard({ label, value, detail, state = "", href = "", post = "", act
   </article>`;
 }
 
-function qualityChecklist(data) {
-  return `<section class="quality-panel">
-    <div>
-      <small>Before submit</small>
-      <h2>Quick check</h2>
-    </div>
-    <ul>
-      ${APPLICANT_QUALITY_CHECKS.map((check) => {
-        const done = qualityCheckDone(check, data);
-        return `<li class="${done ? "done" : ""}" data-quality-check="${escapeAttr(check.id)}" data-quality-test="${escapeAttr(check.test)}" data-quality-fields="${escapeAttr(check.fields.join(","))}">
-          <span></span><b>${escapeHtml(check.label)}</b>
-        </li>`;
-      }).join("")}
-    </ul>
-  </section>`;
-}
-
 function renderApplicantSection(section, context) {
   return `<section class="form-card" id="${escapeAttr(section.id)}">
     <div class="form-card-head">
@@ -498,27 +480,6 @@ function applicantFieldRequired(fieldDef, cycle) {
     return Boolean(cycle[fieldDef.requiredWhen]);
   }
   return Boolean(fieldDef.required);
-}
-
-function qualityCheckDone(check, data = {}) {
-  const values = Object.fromEntries((check.fields || []).map((fieldName) => [fieldName, String(data[fieldName] || "").trim()]));
-  if (check.test === "filled") {
-    return Boolean(values[check.fields[0]]);
-  }
-  if (check.test === "metricOrDate") {
-    return /\d|fy|q[1-4]|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/i.test(values[check.fields[0]] || "");
-  }
-  if (check.test === "email") {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values[check.fields[0]] || "");
-  }
-  if (check.test === "checked") {
-    return Boolean(data[check.fields[0]]);
-  }
-  if (check.test === "differentText") {
-    const [left, right] = check.fields.map((fieldName) => String(data[fieldName] || "").trim().toLowerCase().replace(/\s+/g, " "));
-    return Boolean(left && right && left !== right);
-  }
-  return false;
 }
 
 function gmailPill(gmail) {
@@ -919,19 +880,19 @@ function lockedField(label, name, value) {
 }
 
 function field(label, name, value, type, enabled, required, help = "", example = "") {
-  return `<label><span>${escapeHtml(label)}${required ? " *" : ""}</span><input name="${name}" type="${type}" value="${escapeAttr(value || "")}" ${enabled ? "" : "readonly"} ${required ? "required" : ""}>${fieldMeta(help, example)}</label>`;
+  return `<label><span>${escapeHtml(label)}${required ? " *" : ""}</span>${fieldMeta(help, example)}<input name="${name}" type="${type}" value="${escapeAttr(value || "")}" ${enabled ? "" : "readonly"} ${required ? "required" : ""}></label>`;
 }
 
 function selectField(label, name, value, options, enabled, required, help = "", example = "") {
-  const choices = uniqueClean([value, ...options]).filter(Boolean);
-  return `<label><span>${escapeHtml(label)}${required ? " *" : ""}</span><select name="${name}" ${enabled ? "" : "disabled"} ${required ? "required" : ""} data-field="${escapeAttr(name)}">
+  const choices = sortChoices([value, ...options]).filter(Boolean);
+  return `<label><span>${escapeHtml(label)}${required ? " *" : ""}</span>${fieldMeta(help, example)}<select name="${name}" ${enabled ? "" : "disabled"} ${required ? "required" : ""} data-field="${escapeAttr(name)}">
     <option value="">Select ${escapeHtml(label.toLowerCase())}</option>
     ${choices.map((choice) => option(choice, value, choice)).join("")}
-  </select>${!enabled ? `<input type="hidden" name="${name}" value="${escapeAttr(value || "")}">` : ""}${fieldMeta(help, example)}</label>`;
+  </select>${!enabled ? `<input type="hidden" name="${name}" value="${escapeAttr(value || "")}">` : ""}</label>`;
 }
 
 function textarea(label, name, value, enabled, required, help = "", example = "") {
-  return `<label class="full"><span>${escapeHtml(label)}${required ? " *" : ""}</span><textarea name="${name}" ${enabled ? "" : "readonly"} ${required ? "required" : ""}>${escapeHtml(value || "")}</textarea>${fieldMeta(help, example)}</label>`;
+  return `<label class="full"><span>${escapeHtml(label)}${required ? " *" : ""}</span>${fieldMeta(help, example)}<textarea name="${name}" ${enabled ? "" : "readonly"} ${required ? "required" : ""}>${escapeHtml(value || "")}</textarea></label>`;
 }
 
 function fieldMeta(help = "", example = "") {
@@ -967,12 +928,16 @@ function buildRouteOptions(routes, data = {}) {
     byFunction[data.department] = data.sub_department ? [data.sub_department] : [];
   }
   for (const key of Object.keys(byFunction)) {
-    byFunction[key] = uniqueClean(byFunction[key]);
+    byFunction[key] = sortChoices(byFunction[key]);
   }
-  const functions = uniqueClean([...Object.keys(byFunction), data.department]);
+  const functions = sortChoices([...Object.keys(byFunction), data.department]);
   const selectedSubs = data.department && Array.isArray(byFunction[data.department]) ? byFunction[data.department] : DEFAULT_SUB_FUNCTIONS;
-  const subFunctions = uniqueClean([...selectedSubs, data.sub_department]);
+  const subFunctions = sortChoices([...selectedSubs, data.sub_department]);
   return { functions, subFunctions, byFunction };
+}
+
+function sortChoices(values) {
+  return uniqueClean(values).sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
 }
 
 function uniqueClean(values) {
@@ -1006,11 +971,12 @@ function clientScript() {
   if (data && department && subDepartment && !subDepartment.disabled) {
     let byFunction = {};
     try { byFunction = JSON.parse(data.textContent || "{}"); } catch { byFunction = {}; }
-    const allOptions = Array.from(new Set(Object.values(byFunction).flat().filter(Boolean))).sort();
+    const textSort = (left, right) => String(left).localeCompare(String(right), undefined, { sensitivity: "base" });
+    const allOptions = Array.from(new Set(Object.values(byFunction).flat().filter(Boolean))).sort(textSort);
     const current = subDepartment.value;
     function fill() {
       const chosen = department.value;
-      const options = chosen && Array.isArray(byFunction[chosen]) ? byFunction[chosen] : allOptions;
+      const options = (chosen && Array.isArray(byFunction[chosen]) ? byFunction[chosen] : allOptions).slice().sort(textSort);
       const previous = subDepartment.value || current;
       subDepartment.innerHTML = "";
       const empty = document.createElement("option");
@@ -1031,38 +997,6 @@ function clientScript() {
     });
     fill();
   }
-
-  const checks = Array.from(document.querySelectorAll("[data-quality-check]"));
-  if (!checks.length) return;
-  const read = (name) => {
-    const field = document.getElementsByName(name)[0];
-    if (!field) return "";
-    return field.type === "checkbox" ? (field.checked ? "yes" : "") : field.value.trim();
-  };
-  const hasMetricOrDate = (value) => /\\d|fy|q[1-4]|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/i.test(value);
-  const isEmail = (value) => /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value);
-  const normalized = (value) => String(value || "").trim().toLowerCase().replace(/\\s+/g, " ");
-  function evaluate(item) {
-    const fields = (item.dataset.qualityFields || "").split(",").filter(Boolean);
-    const values = fields.map(read);
-    let done = false;
-    if (item.dataset.qualityTest === "filled") done = Boolean(values[0]);
-    if (item.dataset.qualityTest === "metricOrDate") done = hasMetricOrDate(values[0] || "");
-    if (item.dataset.qualityTest === "email") done = isEmail(values[0] || "");
-    if (item.dataset.qualityTest === "checked") done = Boolean(values[0]);
-    if (item.dataset.qualityTest === "differentText") {
-      const left = normalized(values[0]);
-      const right = normalized(values[1]);
-      done = Boolean(left && right && left !== right);
-    }
-    item.classList.toggle("done", done);
-  }
-  function refreshQuality() {
-    checks.forEach(evaluate);
-  }
-  document.addEventListener("input", refreshQuality);
-  document.addEventListener("change", refreshQuality);
-  refreshQuality();
 })();
 `;
 }
@@ -1497,33 +1431,50 @@ body.applicant-mode main{
   position:sticky;
   top:0;
   z-index:5;
-  display:flex;
-  gap:8px;
-  overflow:auto;
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
   width:100%;
   max-width:100%;
   min-width:0;
-  padding:0 0 12px;
-  margin-bottom:6px;
+  padding:2px 0 16px;
+  margin-bottom:4px;
   background:linear-gradient(180deg,#fff 0,#fff 70%,rgba(255,255,255,0));
 }
 .form-steps a{
-  flex:0 0 auto;
-  min-width:104px;
-  text-align:center;
+  min-width:0;
+  text-align:left;
   display:flex;
   align-items:center;
-  justify-content:center;
-  gap:7px;
+  justify-content:flex-start;
+  gap:10px;
   background:#fff;
-  border:1px solid var(--line-strong);
+  border:1px solid #d5e2dc;
   border-radius:8px;
-  padding:9px 13px;
+  padding:10px 12px;
   font-weight:850;
   color:#25313d;
-  box-shadow:var(--shadow-soft);
+  box-shadow:0 10px 24px rgba(15,59,53,.05);
+  transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease;
 }
-.form-steps a span{color:var(--green);font-size:11px;font-weight:850}
+.form-steps a:hover{
+  border-color:#afcec2;
+  box-shadow:0 14px 30px rgba(15,59,53,.09);
+  transform:translateY(-1px);
+}
+.form-steps a span{
+  width:28px;
+  height:28px;
+  display:grid;
+  place-items:center;
+  flex:0 0 auto;
+  color:#0f3b35;
+  background:#e7f5ef;
+  border:1px solid #c4ded4;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:850;
+}
 .applicant-form-page{
   max-width:920px;
   margin:0 auto 64px;
@@ -1565,72 +1516,36 @@ body.applicant-mode main{
   display:grid;
   gap:14px;
 }
-.quality-panel,.form-card,.form-submit-card{
+.form-card,.form-submit-card{
   background:#fff;
   border:1px solid #dbe4df;
   border-radius:8px;
   box-shadow:0 12px 34px rgba(25,38,48,.06);
 }
-.quality-panel{
-  display:grid;
-  grid-template-columns:170px minmax(0,1fr);
-  gap:18px;
-  align-items:start;
-  padding:18px 22px;
-}
-.quality-panel small,.form-card-head span{
-  color:var(--green);
-  font-weight:850;
-  text-transform:uppercase;
-  font-size:12px;
-  letter-spacing:0;
-}
-.quality-panel h2{margin:2px 0 0;font-size:19px}
-.quality-panel ul{
-  list-style:none;
-  margin:0;
-  padding:0;
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:8px 14px;
-}
-.quality-panel li{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  min-width:0;
-  color:#61706a;
-}
-.quality-panel li span{
-  width:12px;
-  height:12px;
-  border:1px solid #aebbb5;
-  border-radius:999px;
-  background:#fff;
-  flex:0 0 auto;
-}
-.quality-panel li.done{color:#163f36}
-.quality-panel li.done span{background:var(--green);border-color:var(--green);box-shadow:inset 0 0 0 3px #fff}
-.quality-panel li b{font-size:13px;line-height:1.25}
 .form-card{
-  padding:28px 34px 30px;
+  padding:30px 36px 32px;
   scroll-margin-top:78px;
 }
 .form-card-head{
   display:grid;
-  grid-template-columns:46px minmax(0,1fr);
-  gap:14px;
+  grid-template-columns:58px minmax(0,1fr);
+  gap:18px;
   align-items:start;
-  margin-bottom:18px;
+  margin-bottom:8px;
+  padding-bottom:20px;
+  border-bottom:1px solid #e3e9e6;
 }
 .form-card-head span{
-  width:46px;
-  height:46px;
+  width:54px;
+  height:54px;
   display:grid;
   place-items:center;
-  color:#fff;
-  background:#143f37;
-  border-radius:8px;
+  color:#0f3b35;
+  background:#e7f5ef;
+  border:1px solid #bfd9cf;
+  border-radius:999px;
+  font-weight:850;
+  box-shadow:inset 0 0 0 5px #f8fcfa;
 }
 .form-card-head h2{margin:0;font-size:25px;line-height:1.08}
 .form-card-head p{margin:5px 0 0;color:var(--muted)}
@@ -1643,15 +1558,17 @@ body.applicant-mode main{
 .question-block:last-child{padding-bottom:0}
 .form-sheet label{display:block;min-width:0}
 .form-sheet label span{display:block;margin-bottom:7px;color:#1e302b;font-weight:850}
-.form-sheet label small{display:block;margin-top:7px;color:#64746d;font-size:13px;line-height:1.4;max-width:640px}
+.form-sheet label small{display:block;margin:0 0 5px;color:#64746d;font-size:13px;line-height:1.4;max-width:640px}
 .form-sheet .field-example{
   color:#25594d;
+  margin-bottom:10px;
 }
 .form-sheet input,.form-sheet select,.form-sheet textarea{
   border-color:#b9c8c1;
   border-radius:7px;
   padding:12px 13px;
   background:#fff;
+  margin-top:3px;
 }
 .form-sheet input[readonly],.form-sheet textarea[readonly]{background:#f5f8f6}
 .form-sheet textarea{min-height:118px}
@@ -2134,8 +2051,6 @@ td b{font-weight:850}
   .applicant-form-page{max-width:100%}
   .form-cover{padding:24px}
   .form-cover h1{font-size:34px}
-  .quality-panel{grid-template-columns:1fr;padding:18px}
-  .quality-panel ul{grid-template-columns:1fr}
   .form-card{padding:22px}
   .form-submit-card{flex-direction:column}
   .form-aside{position:static}
@@ -2171,18 +2086,18 @@ td b{font-weight:850}
   .hero-ticket{max-width:none}
   .panel{padding:15px}
   .application-form{max-width:calc(100vw - 32px)}
-  .application-form label{max-width:326px}
+  .application-form label{max-width:100%}
   .application-form .form-chapter>div{width:auto;max-width:260px}
-  .application-form label small{width:auto;max-width:294px}
+  .application-form label small{width:auto;max-width:100%}
   .form-steps{
     display:grid;
     grid-template-columns:repeat(4,minmax(0,1fr));
-    gap:7px;
+    gap:6px;
     overflow:visible;
-    width:min(100%,358px);
+    width:100%;
   }
-  .form-steps a{min-width:0;padding:9px 6px;font-size:13px;gap:0}
-  .form-steps a span{display:none}
+  .form-steps a{min-width:0;padding:8px 4px;font-size:12px;gap:5px;flex-direction:column;text-align:center}
+  .form-steps a span{display:grid;width:22px;height:22px;font-size:10px}
   .actions .primary,.actions .secondary,.actions .danger,.form-actions button,.form-actions a{width:100%}
   .bars div{grid-template-columns:1fr 1fr 30px}
 }`;

@@ -142,36 +142,3 @@ export const APPLICANT_FORM_DEFINITION = {
     },
   ],
 };
-
-export const APPLICANT_QUALITY_CHECKS = [
-  {
-    id: "baseline",
-    label: "Baseline is filled",
-    fields: ["baseline"],
-    test: "filled",
-  },
-  {
-    id: "target_metric",
-    label: "Target has a number or timeline",
-    fields: ["multiplier_target"],
-    test: "metricOrDate",
-  },
-  {
-    id: "manager_email",
-    label: "Manager email looks valid",
-    fields: ["manager_email"],
-    test: "email",
-  },
-  {
-    id: "manager_aligned",
-    label: "Manager alignment is ticked",
-    fields: ["manager_aligned"],
-    test: "checked",
-  },
-  {
-    id: "not_same_okr",
-    label: "Target is not a copy of regular OKR",
-    fields: ["regular_okr", "multiplier_target"],
-    test: "differentText",
-  },
-];
