@@ -23,7 +23,7 @@ export const APPLICANT_FORM_DEFINITION = {
       number: "02",
       title: "Team",
       navTitle: "Team",
-      intro: "This routes manager and function-head approval.",
+      intro: "",
       fields: [
         {
           kind: "select",
@@ -153,7 +153,7 @@ export const APPLICANT_FORM_DEFINITION = {
           label: "What support would you require from Multipliers team?",
           required: false,
           help: "Do not list normal dependencies like steady streams of assets, dev bandwidth, routine approvals, or timely marketplace data. Mention only special unblockers the Multipliers team must actively solve.",
-          example: "Example: Need help getting a cohort-level retention cut that is not available in the regular dashboard.",
+          example: "Example: Need Analytics to pull a one-time cohort view so the upside can be sized before approvals.",
         },
       ],
     },

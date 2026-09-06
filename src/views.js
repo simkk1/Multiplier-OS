@@ -530,12 +530,13 @@ function stageCard({ label, value, detail, state = "", href = "", post = "", act
 }
 
 function renderApplicantSection(section, context) {
+  const intro = String(section.intro || "").trim();
   return `<section class="form-card" id="${escapeAttr(section.id)}">
     <div class="form-card-head">
       <span>${escapeHtml(section.number)}</span>
       <div>
         <h2>${escapeHtml(section.title)}</h2>
-        <p>${escapeHtml(section.intro)}</p>
+        ${intro ? `<p>${escapeHtml(intro)}</p>` : ""}
       </div>
     </div>
     <div class="question-stack">
