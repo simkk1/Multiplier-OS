@@ -15,6 +15,27 @@ const REQUIRED_FIELD_COPY = {
   flywheel: "Flywheel explanation",
 };
 
+const PLACEHOLDER_ANSWERS = new Set([
+  "-",
+  "--",
+  "?",
+  "??",
+  "na",
+  "n/a",
+  "none",
+  "nil",
+  "no",
+  "no clue",
+  "not applicable",
+  "not sure",
+  "tbd",
+  "to be decided",
+  "to be confirmed",
+  "dont know",
+  "don't know",
+  "idk",
+]);
+
 export function nowIso() {
   return new Date().toISOString();
 }
@@ -87,6 +108,15 @@ export function parseBool(value) {
   return v === "1" || v === "true" || v === "yes" || v === "on";
 }
 
+export function isMissingAnswer(value) {
+  const raw = clean(value);
+  if (!raw) {
+    return true;
+  }
+  const normalized = norm(raw).replace(/[.]/g, "").replace(/\s+/g, " ");
+  return PLACEHOLDER_ANSWERS.has(normalized);
+}
+
 export function safeJsonParse(value, fallback = null) {
   try {
     return value ? JSON.parse(value) : fallback;
@@ -123,24 +153,29 @@ export function analyzeFlags(data, cycle) {
       }
       continue;
     }
-    if (!clean(data[field])) {
+    if (field === "baseline" || field === "manager_email" || field === "department") {
+      continue;
+    }
+    if (isMissingAnswer(data[field])) {
       flags.push(`blank_required:${field}`);
     }
   }
-  if (!clean(data.baseline)) {
+  if (isMissingAnswer(data.baseline)) {
     flags.push("no_baseline");
+  }
+  if (isMissingAnswer(data.manager_email)) {
+    flags.push("blank_required:manager_email");
+  } else if (!isEmail(data.manager_email)) {
+    flags.push("invalid_manager_email");
+  }
+  if (isMissingAnswer(data.department)) {
+    flags.push("department_missing");
   }
   if (!/\d|fy|q[1-4]|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/i.test(data.multiplier_target || "")) {
     flags.push("no_numeric_or_dated_target");
   }
   if (sameMeaning(data.regular_okr, data.multiplier_target)) {
     flags.push("multiplier_same_as_regular_okr");
-  }
-  if (!isEmail(data.manager_email)) {
-    flags.push("invalid_manager_email");
-  }
-  if (!clean(data.department)) {
-    flags.push("department_missing");
   }
   return [...new Set(flags)];
 }

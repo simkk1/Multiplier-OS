@@ -55,7 +55,35 @@ export async function ensureBoot(env) {
       await env.DB.batch(statements);
     }
   }
+  await refreshObjectiveFlags(env, cycle);
   return cycle;
+}
+
+async function refreshObjectiveFlags(env, cycle) {
+  const rows = await env.DB.prepare(
+    `SELECT s.id, s.status, s.objective_flags_json, v.data_json
+     FROM submissions s
+     LEFT JOIN submission_versions v ON v.id = s.latest_version_id
+     WHERE s.cycle_id = ? AND s.final_status != 'finalized'`
+  )
+    .bind(cycle.id)
+    .all();
+  const statements = [];
+  for (const row of rows.results || []) {
+    const data = safeJsonParse(row.data_json, {});
+    const flags = analyzeFlags(data, cycle);
+    const nextFlags = JSON.stringify(flags);
+    if (nextFlags === row.objective_flags_json) {
+      continue;
+    }
+    statements.push(
+      env.DB.prepare("UPDATE submissions SET objective_flags_json = ?, status = ?, updated_at = ? WHERE id = ?")
+        .bind(nextFlags, flags.length ? "needs_admin_review" : row.status, nowIso(), row.id)
+    );
+  }
+  if (statements.length) {
+    await env.DB.batch(statements);
+  }
 }
 
 function primaryAdminEmail(env) {
