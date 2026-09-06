@@ -45,7 +45,7 @@ export function gmailErrorMessage(error) {
   return `Gmail action failed: ${message.slice(0, 700)}`;
 }
 
-export async function sendGmail(env, { to, cc = "", subject, body, threadId = "" }) {
+export async function sendGmail(env, { to, cc = "", subject, body, htmlBody = "", threadId = "" }) {
   const token = await gmailAccessToken(env);
   const raw = buildRawEmail({
     from: env.GMAIL_SENDER || DEFAULT_SENDER_EMAIL,
@@ -53,6 +53,7 @@ export async function sendGmail(env, { to, cc = "", subject, body, threadId = ""
     cc,
     subject,
     body,
+    htmlBody,
   });
   const payload = threadId ? { raw, threadId } : { raw };
   const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
@@ -69,7 +70,7 @@ export async function sendGmail(env, { to, cc = "", subject, body, threadId = ""
   return res.json();
 }
 
-export async function createGmailDraft(env, { to, cc = "", subject, body, threadId = "" }) {
+export async function createGmailDraft(env, { to, cc = "", subject, body, htmlBody = "", threadId = "" }) {
   const token = await gmailAccessToken(env);
   const raw = buildRawEmail({
     from: env.GMAIL_SENDER || DEFAULT_SENDER_EMAIL,
@@ -77,6 +78,7 @@ export async function createGmailDraft(env, { to, cc = "", subject, body, thread
     cc,
     subject,
     body,
+    htmlBody,
   });
   const message = threadId ? { raw, threadId } : { raw };
   const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/drafts", {
@@ -134,7 +136,36 @@ async function safeResponseText(res) {
   }
 }
 
-function buildRawEmail({ from, to, cc, subject, body }) {
+function buildRawEmail({ from, to, cc, subject, body, htmlBody = "" }) {
+  if (htmlBody) {
+    const boundary = `multipliers_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const headers = [
+      `From: ${from}`,
+      `To: ${to}`,
+      cc ? `Cc: ${cc}` : "",
+      `Subject: ${encodeMimeWord(subject)}`,
+      "MIME-Version: 1.0",
+      `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    ].filter(Boolean);
+    const message = [
+      headers.join("\r\n"),
+      "",
+      `--${boundary}`,
+      "Content-Type: text/plain; charset=UTF-8",
+      "Content-Transfer-Encoding: 8bit",
+      "",
+      body,
+      "",
+      `--${boundary}`,
+      "Content-Type: text/html; charset=UTF-8",
+      "Content-Transfer-Encoding: 8bit",
+      "",
+      htmlBody,
+      "",
+      `--${boundary}--`,
+    ].join("\r\n");
+    return base64Url(new TextEncoder().encode(message));
+  }
   const headers = [
     `From: ${from}`,
     `To: ${to}`,

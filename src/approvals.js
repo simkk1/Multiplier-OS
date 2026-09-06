@@ -1,7 +1,7 @@
 import { createTask, getCycle, getLatestSubmissions, isTeam1Manager, listRoutes } from "./db.js";
 import { DEFAULT_SENDER_EMAIL } from "./constants.js";
 import { classifyReply, createGmailDraft, extractMessage, getThread, gmailConfigured, sendGmail } from "./email.js";
-import { addHours, baseUrl, clean, flagLabels, newToken, norm, nowIso, rowData, safeJsonParse } from "./util.js";
+import { addHours, baseUrl, clean, escapeHtml, flagLabels, newToken, norm, nowIso, rowData, safeJsonParse } from "./util.js";
 
 export async function listApprovalRequests(env, cycleId) {
   const rows = await env.DB.prepare(
@@ -188,9 +188,7 @@ function matchingRoutes(routes, row) {
 async function upsertApprovalRequest(env, cycle, stage, group, request) {
   const token = newToken();
   const reviewUrl = `${baseUrl(request)}/review/${token}`;
-  const subject = stage === "manager"
-    ? `Multiplier ${cycle.name} applications - ${group.reviewer_name}`
-    : `Multiplier ${cycle.name} function approvals - ${group.reviewer_name}`;
+  const subject = approvalSubject(cycle, stage);
   const body = stage === "manager"
     ? managerBody(cycle, group, reviewUrl)
     : functionBody(cycle, group, reviewUrl);
@@ -238,29 +236,61 @@ async function upsertApprovalRequest(env, cycle, stage, group, request) {
   return requestRow;
 }
 
+function approvalSubject(cycle, stage) {
+  return stage === "manager"
+    ? `Multiplier ${cycle.name} applications for your review`
+    : `Multiplier ${cycle.name} function approvals`;
+}
+
+async function refreshedApprovalBody(env, cycle, request) {
+  const match = String(request.body || "").match(/https?:\/\/[^\s]+\/review\/[a-f0-9]+/i);
+  const reviewUrl = match?.[0] || `/review/${request.review_token}`;
+  const items = await requestItems(env, request.id);
+  const rows = [];
+  for (const item of items) {
+    rows.push({
+      ...item,
+      data: rowData(item),
+      manager_reason: request.stage === "function" ? await latestManagerReason(env, item.submission_id) : "",
+    });
+  }
+  const group = {
+    reviewer_name: request.reviewer_name,
+    reviewer_email: request.reviewer_email,
+    group_key: request.group_key,
+    rows,
+  };
+  return request.stage === "manager"
+    ? managerBody(cycle, group, reviewUrl)
+    : functionBody(cycle, group, reviewUrl);
+}
+
 function managerBody(cycle, group, reviewUrl) {
   const blocks = group.rows.map(({ applicant_name, data }) => {
     return [
-      applicant_name,
-      `Regular OKR: ${data.regular_okr || "-"}`,
-      `Baseline: ${data.baseline || "-"}`,
-      `AOP: ${data.aop || "-"}`,
-      `Multiplier target: ${data.multiplier_target || "-"}`,
-      `Team vision: ${data.team_vision || "-"}`,
-      `Flywheel parts: ${data.flywheel_parts || "-"}`,
-      `Flywheel explanation: ${data.flywheel || "-"}`,
-    ].join("\n");
+      `**${applicant_name}**`,
+      `__Regular OKR:__ ${data.regular_okr || "-"}`,
+      `__Baseline:__ ${data.baseline || "-"}`,
+      `__AOP:__ ${data.aop || "-"}`,
+      `__Multiplier target:__ ${data.multiplier_target || "-"}`,
+      `__Team vision:__ ${data.team_vision || "-"}`,
+      `__Flywheel:__ ${data.flywheel_parts || data.flywheel || "-"}`,
+      data.flywheel_parts ? `__Flywheel explanation:__ ${data.flywheel || "-"}` : "",
+      `__Support required:__ ${data.support_required || "-"}`,
+    ].filter(Boolean).join("\n");
   });
   return `Hi ${group.reviewer_name},
 
-Hope you're doing well.
+Hope you're having a great day!
 
-Sharing Multiplier ${cycle.name} applications from your team. Can you reply naturally with GTG / changes / rejection reason, or use this review page:
-${reviewUrl}
+I'm reaching out wrt ${cycle.name} Multiplier cycle applications. The following people from your team have applied for this cycle with the following multiplier targets:
 
 ${blocks.join("\n\n")}
 
-Please call out if anything needs rework. If you reply here, system will read it and update the approval trail.
+Wanted your thoughts on whether these are in line with the team vision / focus areas for the quarter, whether they can be sharpened further, and if they're ambitious enough. Would love your view on whether these are GTG or should be reworked.
+
+You can reply to this email naturally. If the review page is easier, the latest version is here:
+${reviewUrl}
 
 Best,
 Team Multipliers`;
@@ -283,31 +313,48 @@ function functionBody(cycle, group, reviewUrl) {
           ? `Manager rejected with reason; included for your call. Reason: ${manager_reason || "-"}`
           : "Manager approved.";
       return [
-        applicant_name,
-        note,
-        `Regular OKR: ${data.regular_okr || "-"}`,
-        `Baseline: ${data.baseline || "-"}`,
-        `AOP: ${data.aop || "-"}`,
-        `Multiplier target: ${data.multiplier_target || "-"}`,
-        `Flywheel parts: ${data.flywheel_parts || "-"}`,
-        `Flywheel explanation: ${data.flywheel || "-"}`,
-      ].join("\n");
+        `**${applicant_name}**`,
+        `__Manager status:__ ${note}`,
+        `__Regular OKR:__ ${data.regular_okr || "-"}`,
+        `__Baseline:__ ${data.baseline || "-"}`,
+        `__AOP:__ ${data.aop || "-"}`,
+        `__Multiplier target:__ ${data.multiplier_target || "-"}`,
+        `__Flywheel:__ ${data.flywheel_parts || data.flywheel || "-"}`,
+        data.flywheel_parts ? `__Flywheel explanation:__ ${data.flywheel || "-"}` : "",
+      ].filter(Boolean).join("\n");
     });
-    return `${sub}\n${items.join("\n\n")}`;
+    return `__${sub}:__\n${items.join("\n\n")}`;
   });
   return `Hi ${group.reviewer_name},
 
-Need your function approval for Multiplier ${cycle.name}. You can reply naturally or use this review page:
-${reviewUrl}
+Hope you're having a great day!
+
+I'm reaching out wrt ${cycle.name} Multiplier cycle applications for your function.
 
 Managers have approved rows marked below. Your direct reportees are included here for your approval so they do not get a duplicate manager mail.
 
 ${sections.join("\n\n---\n\n")}
 
-Please reply GTG, changes needed, or rejection reason.
+Wanted your thoughts on whether these are in line with the function vision / focus areas for the quarter, whether they can be sharpened further, and if they're ambitious enough. Would love your view on whether these are GTG or should be reworked.
+
+You can reply to this email naturally. If the review page is easier, the latest version is here:
+${reviewUrl}
 
 Best,
 Team Multipliers`;
+}
+
+function approvalBodyHtml(body) {
+  const html = escapeHtml(body)
+    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+    .replace(/__(.*?):__/g, '<span style="text-decoration:underline;font-weight:600">$1:</span>')
+    .replace(/__(.*?):/g, '<span style="text-decoration:underline;font-weight:600">$1:</span>')
+    .replace(/(https:\/\/[^\s<]+)/g, '<a href="$1" style="color:#166534;">$1</a>');
+  const paragraphs = html
+    .split(/\n{2,}/)
+    .map((block) => `<p style="margin:0 0 16px;line-height:1.55;">${block.replace(/\n/g, "<br>")}</p>`)
+    .join("");
+  return `<div style="font-family:Inter,Arial,sans-serif;color:#18181B;font-size:14px;">${paragraphs}</div>`;
 }
 
 export async function sendOrDraftRequest(env, cycle, requestId, mode, testTo = "") {
@@ -320,10 +367,15 @@ export async function sendOrDraftRequest(env, cycle, requestId, mode, testTo = "
   if (!gmailConfigured(env)) {
     throw new Error("Gmail env missing");
   }
+  const refreshedBody = await refreshedApprovalBody(env, cycle, request);
+  const refreshedSubject = approvalSubject(cycle, request.stage);
+  await env.DB.prepare("UPDATE approval_requests SET subject = ?, body = ?, updated_at = ? WHERE id = ?")
+    .bind(refreshedSubject, refreshedBody, nowIso(), request.id)
+    .run();
   const to = testTo || request.reviewer_email;
-  const subject = testTo ? `[TEST] ${request.subject}` : request.subject;
-  const body = testTo ? `${request.body}\n\nTEST ONLY. Real recipient would be ${request.reviewer_email}.` : request.body;
-  const payload = { to, subject, body, threadId: request.gmail_thread_id || "" };
+  const subject = testTo ? `[TEST] ${refreshedSubject}` : refreshedSubject;
+  const body = testTo ? `${refreshedBody}\n\nTEST ONLY. Real recipient would be ${request.reviewer_email}.` : refreshedBody;
+  const payload = { to, subject, body, htmlBody: approvalBodyHtml(body), threadId: request.gmail_thread_id || "" };
   const result = mode === "draft" ? await createGmailDraft(env, payload) : await sendGmail(env, payload);
   const message = result.message || result;
   const classification = testTo ? "test_sent" : mode;

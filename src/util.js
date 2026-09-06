@@ -1,5 +1,20 @@
 import { MATERIAL_FIELDS, OBJECTIVE_FLAG_COPY, REQUIRED_FIELDS } from "./constants.js";
 
+const REQUIRED_FIELD_COPY = {
+  applicant_name: "Applicant name",
+  applicant_email: "Applicant email",
+  manager_name: "Manager name",
+  manager_email: "Manager email",
+  department: "Function",
+  regular_okr: "Regular OKR",
+  multiplier_target: "Multiplier target",
+  baseline: "Baseline",
+  aop: "AOP",
+  team_vision: "Team vision",
+  flywheel_parts: "Flywheel part",
+  flywheel: "Flywheel explanation",
+};
+
 export function nowIso() {
   return new Date().toISOString();
 }
@@ -109,8 +124,7 @@ export function analyzeFlags(data, cycle) {
       continue;
     }
     if (!clean(data[field])) {
-      flags.push("blank_required");
-      break;
+      flags.push(`blank_required:${field}`);
     }
   }
   if (!clean(data.baseline)) {
@@ -159,7 +173,13 @@ function tokenSet(value) {
 }
 
 export function flagLabels(flags) {
-  return (flags || []).map((flag) => OBJECTIVE_FLAG_COPY[flag] || flag);
+  return (flags || []).map((flag) => {
+    if (String(flag).startsWith("blank_required:")) {
+      const field = String(flag).split(":")[1] || "";
+      return `Blank required field: ${REQUIRED_FIELD_COPY[field] || field || "Unknown field"}`;
+    }
+    return OBJECTIVE_FLAG_COPY[flag] || flag;
+  });
 }
 
 export function addHours(iso, hours) {

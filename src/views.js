@@ -441,7 +441,11 @@ function attentionItems(stats, tasks, gmail) {
     items.push({ tone: "bad", title: "Gmail not connected", detail: missing, href: "/admin/approvals", action: "Open" });
   }
   if (Number(stats.blockers || 0)) {
-    items.push({ tone: "bad", title: `${Number(stats.blockers || 0)} application blockers`, detail: "Objective checks or admin review flags", href: "/admin/submissions?status=needs_admin_review", action: "Review" });
+    const blockerTasks = (tasks || []).filter((task) => task.priority === "blocker" && task.kind !== "gmail_setup");
+    const detail = blockerTasks.length
+      ? blockerTasks.slice(0, 2).map((task) => `${task.title}: ${task.details || "No reason captured"}`).join(" | ")
+      : "Open Objective checks to see the reason for manual review.";
+    items.push({ tone: "bad", title: `${Number(stats.blockers || 0)} application blocker${Number(stats.blockers || 0) === 1 ? "" : "s"}`, detail, href: "/admin/submissions?status=needs_admin_review", action: "Review" });
   }
   if (Number(stats.manager_pending || 0)) {
     items.push({ tone: "warn", title: `${Number(stats.manager_pending || 0)} manager approvals pending`, detail: "Manager approval or recheck", href: "/admin/approvals", action: "Open" });
@@ -669,8 +673,9 @@ function settingsForm(cycle) {
 
 export function adminSubmissions({ rows, filters }) {
   return `
-    <header class="top"><div><p class="eyebrow">Database</p><h1>Latest submissions</h1></div><a class="secondary" href="/admin/export.xlsx">Export XLSX</a></header>
+    <header class="top"><div><p class="eyebrow">Database</p><h1>Latest submissions</h1><p class="top-note">One row per applicant email. Manager name is shown beside every latest submission.</p></div><a class="secondary" href="/admin/export.xlsx">Export XLSX</a></header>
     <section class="panel">
+      <p class="table-note">Objective checks are automatic. <b>Clear</b> means no blocker was detected. Warning chips show the exact reason a row needs admin review before approval emails move.</p>
       <form class="filters" method="get" action="/admin/submissions">
         <input type="search" name="q" placeholder="Search name, email, manager, OKR" value="${escapeAttr(filters.q || "")}">
         <input type="search" name="department" placeholder="Department" value="${escapeAttr(filters.department || "")}">
@@ -678,7 +683,7 @@ export function adminSubmissions({ rows, filters }) {
         <button class="secondary">Filter</button>
       </form>
       <div class="table-wrap"><table>
-        <thead><tr><th>Name</th><th>Team</th><th>Manager</th><th>Multiplier</th><th>Approval</th><th>Flags</th><th>Updated</th></tr></thead>
+        <thead><tr><th>Applicant</th><th>Team</th><th>Manager</th><th>Multiplier</th><th>Approval status</th><th>Objective checks</th><th>Updated</th></tr></thead>
         <tbody>${rows.map(submissionRow).join("") || `<tr><td colspan="7">No rows.</td></tr>`}</tbody>
       </table></div>
     </section>`;
@@ -686,22 +691,33 @@ export function adminSubmissions({ rows, filters }) {
 
 function submissionRow(row) {
   const data = rowData(row);
-  const flags = safeJsonParse(row.objective_flags_json, []);
+  const checks = submissionCheckLabels(row);
   return `<tr>
     <td><a href="/admin/submission/${row.id}"><b>${escapeHtml(row.applicant_name)}</b></a><br><span>${escapeHtml(row.applicant_email)}</span></td>
     <td>${escapeHtml(row.department)}<br><span>${escapeHtml(row.sub_department || "-")}</span></td>
     <td>${escapeHtml(row.manager_name)}<br><span>${escapeHtml(row.manager_email)}</span></td>
     <td>${escapeHtml(data.multiplier_target || "-")}</td>
     <td>${statusMini("Mgr", row.manager_status)}${statusMini("Func", row.function_status)}${statusMini("Final", row.final_status)}</td>
-    <td>${flags.length ? flagLabels(flags).map((f) => `<span class="tag warn">${escapeHtml(f)}</span>`).join("") : `<span class="tag good">Clear</span>`}</td>
+    <td>${checks.length ? checks.map((f) => `<span class="tag warn">${escapeHtml(f)}</span>`).join("") : `<span class="tag good" title="No automatic objective blocker found.">Clear</span>`}</td>
     <td>${localStamp(row.updated_at)}</td>
   </tr>`;
 }
 
+function submissionCheckLabels(row) {
+  const flags = safeJsonParse(row.objective_flags_json, []);
+  const labels = flagLabels(flags);
+  if (!labels.length && row.status === "needs_admin_review") {
+    labels.push("Manual review required");
+  }
+  return labels;
+}
+
 export function submissionDetail({ row, versions, audit }) {
   const data = rowData(row);
+  const checks = submissionCheckLabels(row);
   return `
-    <header class="top"><div><p class="eyebrow">Submission</p><h1>${escapeHtml(row.applicant_name)}</h1></div>${statusPill(row.status)}</header>
+    <header class="top"><div><p class="eyebrow">Submission</p><h1>${escapeHtml(row.applicant_name)}</h1><p class="top-note">Manager: ${escapeHtml(row.manager_name)} (${escapeHtml(row.manager_email)})</p></div>${statusPill(row.status)}</header>
+    ${checks.length ? `<section class="notice warn"><b>Manual review reason:</b> ${checks.map(escapeHtml).join("; ")}</section>` : ""}
     <section class="grid two">
       <article class="panel"><h2>Latest version</h2>${compactDetails(data)}</article>
       <article class="panel"><h2>Admin edit</h2>${adminEditForm(row, data)}</article>
@@ -770,18 +786,22 @@ function requestRow(row, gmail) {
 }
 
 export function reviewPage({ request, items, message = "" }) {
+  const stageLabel = request.stage === "function" ? "Function review" : "Manager review";
+  const itemCount = Number(items.length || 0);
+  const itemWord = itemCount === 1 ? "application" : "applications";
   return `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Multiplier review</title><style>${style()}</style></head>
 <body class="review-mode"><main class="review">
   <section class="review-hero">
     <div>
-      <p class="eyebrow">${escapeHtml(request.stage)} review</p>
-      <h1>${escapeHtml(request.subject)}</h1>
-      <p>Reply by email or review here. This page always shows the latest submitted version.</p>
+      <p class="eyebrow">${escapeHtml(stageLabel)}</p>
+      <h1>${itemCount} ${escapeHtml(itemWord)} to review</h1>
+      <p>Reply by email or review here. This page always shows the latest submitted version, even if the applicant edited after the mail went out.</p>
     </div>
     <div class="review-count">
-      <b>${Number(items.length || 0)}</b>
-      <span>items</span>
+      <small>Reviewer</small>
+      <b>${escapeHtml(request.reviewer_name)}</b>
+      <span>${escapeHtml(request.reviewer_email)}</span>
       ${statusPill(request.status)}
     </div>
   </section>
@@ -795,7 +815,15 @@ function reviewItem(item, token) {
   const stale = item.version_id_at_send && item.version_id_at_send !== item.latest_version_id;
   return `<section class="panel review-item">
     <div class="section-head">
-      <div><h2>${escapeHtml(item.applicant_name)}</h2><span class="muted">${escapeHtml(item.department)} / ${escapeHtml(item.sub_department || "-")} | v${item.version_no || 1}${stale ? `, email had v${item.sent_version_no || "old"}` : ""}</span></div>
+      <div>
+        <p class="eyebrow">Applicant</p>
+        <h2>${escapeHtml(item.applicant_name)}</h2>
+        <div class="review-meta">
+          <span><b>Manager</b>${escapeHtml(data.manager_name || item.manager_name || "-")}</span>
+          <span><b>Team</b>${escapeHtml(item.department)} / ${escapeHtml(item.sub_department || "-")}</span>
+          <span><b>Version</b>v${item.version_no || 1}${stale ? `, email had v${item.sent_version_no || "old"}` : ""}</span>
+        </div>
+      </div>
       ${statusPill(item.status)}
     </div>
     ${stale ? `<div class="notice warn">Applicant edited after mail. Action here applies to latest version.</div>` : ""}
@@ -812,19 +840,20 @@ function reviewItem(item, token) {
 
 export function routesPage({ routes, team1 }) {
   return `
-    <header class="top"><div><p class="eyebrow">Routes</p><h1>Function dropdowns and approvers</h1><p class="top-note">These rows power the applicant function/sub-function dropdowns and later route function-head emails.</p></div></header>
+    <header class="top"><div><p class="eyebrow">Routes</p><h1>Function approval routes</h1><p class="top-note">A route decides who receives the grouped function-head approval email for a function or sub-function after manager approvals are done.</p></div></header>
     <section class="panel">
       <form method="post" action="/admin/routes" class="route-table">
-        <div class="section-head"><h2>Function routes</h2><span class="muted">Turn off a row to remove it from applicant dropdowns</span></div>
-        <div class="table-wrap"><table><thead><tr><th>Function</th><th>Sub-function</th><th>Function head</th><th>Email</th><th>Shown</th></tr></thead>
+        <div class="section-head"><h2>Function approval routes</h2><span class="muted">Edit cells, untick Shown to hide from the applicant form, or tick Remove and save.</span></div>
+        <div class="table-wrap"><table><thead><tr><th>Function</th><th>Sub-function</th><th>Function head</th><th>Email</th><th>Shown</th><th>Remove</th></tr></thead>
         <tbody>${routes.map((r) => `<tr>
           <td><input name="route_department_${r.id}" value="${escapeAttr(r.department)}" required></td>
           <td><input name="route_sub_department_${r.id}" value="${escapeAttr(r.sub_department || "")}" placeholder="Optional"></td>
           <td><input name="route_owner_name_${r.id}" value="${escapeAttr(r.owner_name)}" required></td>
           <td><input name="route_owner_email_${r.id}" value="${escapeAttr(r.owner_email || "")}" placeholder="owner@example.com"></td>
           <td><label class="check"><input type="checkbox" name="route_active_${r.id}" ${r.active ? "checked" : ""}><span>Yes</span></label></td>
-        </tr>`).join("") || `<tr><td colspan="5">No routes yet.</td></tr>`}</tbody></table></div>
-        <button class="primary">Save routes</button>
+          <td><label class="check danger-check"><input type="checkbox" name="route_delete_${r.id}"><span>Remove</span></label></td>
+        </tr>`).join("") || `<tr><td colspan="6">No routes yet.</td></tr>`}</tbody></table></div>
+        <button class="primary">Save route changes</button>
       </form>
     </section>
     <section class="panel">
@@ -838,7 +867,7 @@ export function routesPage({ routes, team1 }) {
       </form>
     </section>
     <section class="panel">
-      <div class="section-head"><h2>Team 1 managers</h2><span class="muted">Applicants under these managers skip manager mail</span></div>
+      <div class="section-head"><h2>Team 1 managers</h2><span class="muted">Applicants under these managers skip manager mail and go to function approval.</span></div>
       <div class="chips">${team1.map((m) => `<span class="tag">${escapeHtml(m.manager_name)}${m.manager_email ? ` - ${escapeHtml(m.manager_email)}` : ""}</span>`).join("") || `<span class="muted">No Team 1 managers yet.</span>`}</div>
       <form method="post" action="/admin/team1/add" class="inline route-add">
         <input name="manager_name" placeholder="Manager name" required>
@@ -860,7 +889,12 @@ function taskList(tasks, withDone = false) {
   if (!tasks.length) {
     return `<p class="muted">No tasks.</p>`;
   }
-  return `<ul class="plain">${tasks.map((task) => `<li><b>${escapeHtml(task.title)}</b><span>${escapeHtml(task.details || "")}</span><em>${escapeHtml(task.priority)} | due ${localStamp(task.due_at)}</em>${withDone ? `<form method="post" action="/admin/tasks/${task.id}/done"><button class="secondary small">Done</button></form>` : ""}</li>`).join("")}</ul>`;
+  return `<ul class="plain">${tasks.map((task) => {
+    const owner = task.applicant_name
+      ? `Applicant: ${task.applicant_name}${task.manager_name ? ` | Manager: ${task.manager_name}` : ""}`
+      : "";
+    return `<li><b>${escapeHtml(task.title)}</b>${owner ? `<span class="task-owner">${escapeHtml(owner)}</span>` : ""}<span>${escapeHtml(task.details || "")}</span><em>${escapeHtml(task.priority)} | due ${localStamp(task.due_at)}</em>${withDone ? `<form method="post" action="/admin/tasks/${task.id}/done"><button class="secondary small">Done</button></form>` : ""}</li>`;
+  }).join("")}</ul>`;
 }
 
 function requestList(requests) {
@@ -1137,19 +1171,21 @@ function clientScript() {
 
 function style() {
   return `
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@600;700&display=swap");
 :root{
-  --bg:#f5f7fa;
+  --bg:#FAFAF9;
   --surface:#ffffff;
-  --surface-2:#eef3f6;
-  --surface-3:#f8fafb;
-  --ink:#17202a;
-  --muted:#64717e;
-  --line:#d8e0e7;
-  --line-strong:#b8c5d1;
-  --nav:#142033;
-  --green:#16785f;
-  --green-soft:#e7f5ef;
-  --blue:#2764a8;
+  --surface-2:#f4f4f5;
+  --surface-3:#FAFAF9;
+  --ink:#18181B;
+  --muted:#71717A;
+  --line:#E4E4E7;
+  --line-strong:#d4d4d8;
+  --nav:#166534;
+  --green:#16A34A;
+  --green-dark:#166534;
+  --green-soft:#DCFCE7;
+  --blue:#166534;
   --blue-soft:#e8f0fb;
   --amber:#a96912;
   --amber-soft:#fff2d8;
@@ -1159,7 +1195,7 @@ function style() {
   --violet-soft:#f0edff;
   --shadow:0 18px 48px rgba(18,32,50,.08);
   --shadow-soft:0 8px 22px rgba(18,32,50,.06);
-  font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
+  font-family:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
   color:var(--ink);
   background:var(--bg);
 }
@@ -1169,7 +1205,7 @@ body{
   min-width:320px;
   overflow-x:hidden;
   background:
-    linear-gradient(180deg,#ffffff 0,#f5f7fa 260px),
+    linear-gradient(180deg,#ffffff 0,#FAFAF9 260px),
     var(--bg);
   color:var(--ink);
   font-size:15px;
@@ -1177,20 +1213,23 @@ body{
 }
 a{color:inherit;text-decoration:none}
 button,input,select,textarea{font:inherit}
+h1,h2,h3,nav a,.brand b,.metric-card b,.stage-card b,.snapshot b,.hero-ticket b,.program-note b,.program-page-card b,.review-count b,.eyebrow,.pill,.tag,th{
+  font-family:"Space Grotesk","Inter",ui-sans-serif,system-ui,sans-serif;
+}
 button,.primary,.secondary,.danger{
   border:1px solid transparent;
   border-radius:7px;
   min-height:38px;
   padding:9px 13px;
-  font-weight:760;
+  font-weight:600;
   cursor:pointer;
   transition:background .16s ease,border-color .16s ease,box-shadow .16s ease,transform .16s ease;
 }
 button:hover,.primary:hover,.secondary:hover,.danger:hover{transform:translateY(-1px);box-shadow:var(--shadow-soft)}
 .primary{background:var(--green);color:#fff;display:inline-flex;align-items:center;justify-content:center}
-.primary:hover{background:#11694f}
+.primary:hover{background:var(--green-dark)}
 .secondary{background:#fff;border-color:var(--line-strong);color:#25313d;display:inline-flex;align-items:center;justify-content:center}
-.secondary:hover{background:#f8fafb;border-color:#96a6b5}
+.secondary:hover{background:var(--surface-3);border-color:var(--line-strong)}
 .danger{background:var(--coral-soft);border-color:#efb2aa;color:#893128}
 .small{min-height:30px;padding:5px 9px;font-size:13px}
 input,select,textarea{
@@ -1217,7 +1256,7 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
   top:0;
   height:100vh;
   background:var(--nav);
-  color:#eaf0f6;
+  color:#ffffff;
   border-right:1px solid rgba(255,255,255,.08);
   padding:22px 16px;
   display:flex;
@@ -1226,7 +1265,7 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
 }
 .brand{display:grid;gap:10px;min-width:0}
 .brand b{display:block;font-size:18px;line-height:1.15}
-.brand small{display:block;margin-top:3px;color:#aebdcb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.brand small{display:block;margin-top:3px;color:#DCFCE7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .brand-copy{padding:0 2px}
 .logo-tile{
   display:block;
@@ -1243,7 +1282,7 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
   width:43px;
   height:43px;
   flex:0 0 auto;
-  background:#0d1624;
+  background:#166534;
   display:grid;
   grid-template-columns:repeat(2,1fr);
   gap:5px;
@@ -1259,14 +1298,14 @@ nav{display:grid;gap:7px}
 nav a{
   padding:10px 11px;
   border-radius:7px;
-  font-weight:760;
-  color:#cbd6e2;
+  font-weight:600;
+  color:#DCFCE7;
   display:flex;
   align-items:center;
   justify-content:space-between;
 }
 nav a:hover{background:rgba(255,255,255,.08);color:#fff}
-nav a.active{background:#ffffff;color:#142033;box-shadow:0 10px 24px rgba(0,0,0,.14)}
+nav a.active{background:#ffffff;color:#18181B;box-shadow:0 10px 24px rgba(0,0,0,.14)}
 .role-switch{
   border-top:1px solid rgba(255,255,255,.10);
   border-bottom:1px solid rgba(255,255,255,.10);
@@ -1281,9 +1320,9 @@ nav a.active{background:#ffffff;color:#142033;box-shadow:0 10px 24px rgba(0,0,0,
   gap:2px;
   min-width:0;
 }
-.cycle-card small,.who small{color:#aebdcb;font-weight:760;text-transform:uppercase;font-size:11px;letter-spacing:0}
+.cycle-card small,.who small{color:#DCFCE7;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:0}
 .cycle-card b,.who b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cycle-card span,.who span{color:#cbd6e2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cycle-card span,.who span{color:#DCFCE7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .who{margin-top:auto}
 .test-switch{display:grid;gap:7px;margin-top:8px}
 .side-button{
@@ -1298,9 +1337,9 @@ nav a.active{background:#ffffff;color:#142033;box-shadow:0 10px 24px rgba(0,0,0,
   border-radius:7px;
   padding:6px 8px;
   font-size:13px;
-  font-weight:760;
+  font-weight:600;
 }
-.side-button.quiet{background:transparent;color:#cbd6e2}
+.side-button.quiet{background:transparent;color:#DCFCE7}
 .muted,td span,li span{color:var(--muted)}
 main{min-width:0;padding:28px;max-width:1480px;width:100%;margin:0 auto}
 .top{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:20px}
@@ -1308,7 +1347,7 @@ main{min-width:0;padding:28px;max-width:1480px;width:100%;margin:0 auto}
 .top h1{margin:0;font-size:30px;letter-spacing:0;line-height:1.12}
 .top .actions{justify-content:flex-end}
 .top-note{margin:7px 0 0;color:var(--muted);max-width:100%;white-space:normal;overflow-wrap:break-word}
-.eyebrow{margin:0 0 5px;color:#667381;font-size:12px;font-weight:850;letter-spacing:0;text-transform:uppercase}
+.eyebrow{margin:0 0 5px;color:#667381;font-size:12px;font-weight:700;letter-spacing:0;text-transform:uppercase}
 .panel{
   background:rgba(255,255,255,.96);
   border:1px solid var(--line);
@@ -1379,11 +1418,11 @@ body.applicant-mode nav a{
   padding:9px 12px;
 }
 body.applicant-mode nav a:hover{
-  background:#edf5f1;
-  color:#0f3b35;
+  background:#DCFCE7;
+  color:#166534;
 }
 body.applicant-mode nav a.active{
-  background:#0f3b35;
+  background:#166534;
   color:#fff;
   box-shadow:none;
 }
@@ -1400,9 +1439,9 @@ body.applicant-mode .test-switch{
 body.applicant-mode .side-button{
   width:auto;
   min-height:34px;
-  color:#0f3b35;
-  background:#eff7f3;
-  border:1px solid #cfe2da;
+  color:#166534;
+  background:#DCFCE7;
+  border:1px solid #bbf7d0;
   white-space:nowrap;
 }
 body.applicant-mode .side-button.quiet{
@@ -1427,8 +1466,8 @@ body.applicant-mode main{
   border:1px solid #d5e6df;
   border-radius:8px;
   background:
-    linear-gradient(135deg,rgba(15,59,53,.98),rgba(22,120,95,.9)),
-    #0f3b35;
+    linear-gradient(135deg,rgba(22,101,52,.98),rgba(22,163,74,.9)),
+    #166534;
   box-shadow:var(--shadow);
   margin-bottom:24px;
   padding:48px;
@@ -1454,7 +1493,7 @@ body.applicant-mode main{
 }
 .hero-kicker>span:first-child{
   color:#bfe2d6;
-  font-weight:850;
+  font-weight:700;
   text-transform:uppercase;
   font-size:13px;
   letter-spacing:0;
@@ -1484,7 +1523,7 @@ body.applicant-mode main{
   padding:24px;
   animation:riseIn .78s cubic-bezier(.2,.8,.2,1) .08s both;
 }
-.hero-ticket small{color:#bfe2d6;font-weight:850;text-transform:uppercase;font-size:12px}
+.hero-ticket small{color:#bfe2d6;font-weight:700;text-transform:uppercase;font-size:12px}
 .hero-ticket b{font-size:31px;line-height:1.06}
 .hero-ticket span{color:#d8eee6}
 .hero-status{
@@ -1494,7 +1533,7 @@ body.applicant-mode main{
   border-radius:999px;
   padding:6px 10px;
   font-size:13px;
-  font-weight:850;
+  font-weight:700;
 }
 .hero-status.open{background:rgba(255,255,255,.12);color:#ecfff8}
 .hero-status.closed{background:rgba(255,209,102,.14);color:#fff1be}
@@ -1548,7 +1587,7 @@ body.applicant-mode main{
   place-items:center;
   background:var(--green);
   color:#fff;
-  font-weight:850;
+  font-weight:700;
 }
 .experience-path b{line-height:1.2}
 .experience-path small{grid-column:2;color:var(--muted)}
@@ -1592,8 +1631,8 @@ body.applicant-mode main{
     #fff;
 }
 .program-note small{
-  color:#16785f;
-  font-weight:850;
+  color:#166534;
+  font-weight:700;
   text-transform:uppercase;
   font-size:12px;
 }
@@ -1654,8 +1693,8 @@ body.applicant-mode main{
   gap:7px;
 }
 .program-page-card small{
-  color:#16785f;
-  font-weight:850;
+  color:#166534;
+  font-weight:700;
   text-transform:uppercase;
   font-size:12px;
 }
@@ -1700,7 +1739,7 @@ body.applicant-mode main{
   background:var(--surface-3);
   padding:14px;
 }
-.snapshot small{display:block;color:var(--muted);font-weight:850;text-transform:uppercase;font-size:12px}
+.snapshot small{display:block;color:var(--muted);font-weight:700;text-transform:uppercase;font-size:12px}
 .snapshot b{display:block;font-size:34px;line-height:1}
 .form-steps{
   position:sticky;
@@ -1727,7 +1766,7 @@ body.applicant-mode main{
   border:1px solid #d5e2dc;
   border-radius:8px;
   padding:10px 12px;
-  font-weight:850;
+  font-weight:700;
   color:#25313d;
   box-shadow:0 10px 24px rgba(15,59,53,.05);
   transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease;
@@ -1743,12 +1782,12 @@ body.applicant-mode main{
   display:grid;
   place-items:center;
   flex:0 0 auto;
-  color:#0f3b35;
-  background:#e7f5ef;
+  color:#166534;
+  background:#DCFCE7;
   border:1px solid #c4ded4;
   border-radius:999px;
   font-size:11px;
-  font-weight:850;
+  font-weight:700;
 }
 .applicant-form-page{
   max-width:920px;
@@ -1785,7 +1824,7 @@ body.applicant-mode main{
 }
 .form-cover-meta .pill{justify-self:start;margin:0 0 4px}
 .form-cover-meta div{display:grid;gap:2px;min-width:0}
-.form-cover-meta small{color:var(--muted);font-weight:850;text-transform:uppercase;font-size:11px}
+.form-cover-meta small{color:var(--muted);font-weight:700;text-transform:uppercase;font-size:11px}
 .form-cover-meta b,.form-cover-meta span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .form-sheet{
   display:grid;
@@ -1815,11 +1854,11 @@ body.applicant-mode main{
   height:54px;
   display:grid;
   place-items:center;
-  color:#0f3b35;
-  background:#e7f5ef;
+  color:#166534;
+  background:#DCFCE7;
   border:1px solid #bfd9cf;
   border-radius:999px;
-  font-weight:850;
+  font-weight:700;
   box-shadow:inset 0 0 0 5px #f8fcfa;
 }
 .form-card-head h2{margin:0;font-size:25px;line-height:1.08}
@@ -1832,7 +1871,7 @@ body.applicant-mode main{
 .question-block:first-child{border-top:0;padding-top:0}
 .question-block:last-child{padding-bottom:0}
 .form-sheet label{display:block;min-width:0}
-.form-sheet label span{display:block;margin-bottom:7px;color:#1e302b;font-weight:850}
+.form-sheet label span{display:block;margin-bottom:7px;color:#1e302b;font-weight:700}
 .form-sheet label small{display:block;margin:0 0 5px;color:#64746d;font-size:13px;line-height:1.4;max-width:640px}
 .form-sheet .field-example{
   color:#25594d;
@@ -1868,7 +1907,7 @@ body.applicant-mode main{
   width:100%;
   margin:0 0 7px;
   color:#1e302b;
-  font-weight:850;
+  font-weight:700;
 }
 .checkbox-field small{
   display:block;
@@ -1908,7 +1947,7 @@ body.applicant-mode main{
 }
 .choice-check span{
   margin:0 !important;
-  font-weight:760 !important;
+  font-weight:600 !important;
   line-height:1.25;
 }
 .form-submit-card{
@@ -1933,9 +1972,9 @@ body.applicant-mode main{
   border-radius:8px;
   display:grid;
   place-items:center;
-  background:#142033;
+  background:#166534;
   color:#fff;
-  font-weight:850;
+  font-weight:700;
   flex:0 0 auto;
 }
 .form-chapter h2{margin:0 0 3px;font-size:20px}
@@ -1994,7 +2033,7 @@ body.applicant-mode main{
   padding-top:10px;
 }
 .ops-numbers div:nth-child(-n+2){border-top:0;padding-top:0}
-.ops-numbers small{display:block;color:var(--muted);font-weight:850;text-transform:uppercase;font-size:11px}
+.ops-numbers small{display:block;color:var(--muted);font-weight:700;text-transform:uppercase;font-size:11px}
 .ops-numbers b{display:block;font-size:33px;line-height:1}
 .ops-numbers span{color:var(--muted)}
 .stage-board{
@@ -2018,7 +2057,7 @@ body.applicant-mode main{
 }
 .stage-card.current .stage-line{background:var(--amber)}
 .stage-card.done .stage-line{background:var(--green)}
-.stage-card small{grid-column:1/-1;color:var(--muted);font-weight:850;text-transform:uppercase;font-size:12px}
+.stage-card small{grid-column:1/-1;color:var(--muted);font-weight:700;text-transform:uppercase;font-size:12px}
 .stage-card b{font-size:36px;line-height:1}
 .stage-card em{font-style:normal;color:var(--muted)}
 .stage-card a,.stage-card form{justify-self:end}
@@ -2038,11 +2077,11 @@ body.applicant-mode main{
   gap:14px;
   padding:16px 18px;
   cursor:pointer;
-  font-weight:850;
+  font-weight:700;
 }
 .utility summary::-webkit-details-marker{display:none}
-.utility summary small{font-weight:650;color:var(--muted);text-align:right}
-.utility[open] summary{border-bottom:1px solid var(--line);background:#f8fafb}
+.utility summary small{font-weight:500;color:var(--muted);text-align:right}
+.utility[open] summary{border-bottom:1px solid var(--line);background:var(--surface-3)}
 .utility>form,.utility>.plain,.utility>p{margin:18px}
 .utility>.form{margin:18px}
 .welcome-band,.cockpit-band,.review-hero{
@@ -2106,7 +2145,7 @@ body.applicant-mode main{
 .progress-step.done span{background:var(--green)}
 .progress-step.current span{background:var(--amber)}
 .progress-step b{font-size:13px}
-.progress-step em{font-size:24px;line-height:1;font-style:normal;font-weight:850}
+.progress-step em{font-size:24px;line-height:1;font-style:normal;font-weight:700}
 .progress-step small{color:var(--muted)}
 .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px}
 .metrics.three{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -2127,7 +2166,7 @@ body.applicant-mode main{
 .metric-card.amber:before{background:var(--amber)}
 .metric-card.coral:before{background:var(--coral)}
 .metric-card.violet:before{background:var(--violet)}
-.metric-card small{color:var(--muted);font-weight:850;text-transform:uppercase;font-size:12px;letter-spacing:0}
+.metric-card small{color:var(--muted);font-weight:700;text-transform:uppercase;font-size:12px;letter-spacing:0}
 .metric-card b{font-size:34px;line-height:1.02}
 .metric-card span{color:var(--muted)}
 .gmail-readiness{margin-bottom:18px}
@@ -2148,7 +2187,7 @@ body.applicant-mode main{
 .form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
 .form.compact textarea{min-height:74px}
 .form label{min-width:0}
-.form label span{display:block;margin-bottom:6px;color:#364454;font-weight:760}
+.form label span{display:block;margin-bottom:6px;color:#364454;font-weight:600}
 .form label small{display:block;margin-top:6px;color:var(--muted);font-size:13px;line-height:1.35;max-width:100%;white-space:normal;overflow-wrap:break-word}
 .full{grid-column:1/-1}
 .form-layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:18px;align-items:start}
@@ -2169,7 +2208,7 @@ body.applicant-mode main{
   gap:3px;
   min-width:0;
 }
-.form-aside small{color:var(--muted);font-weight:850;text-transform:uppercase;font-size:11px;letter-spacing:0}
+.form-aside small{color:var(--muted);font-weight:700;text-transform:uppercase;font-size:11px;letter-spacing:0}
 .form-aside b,.form-aside span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .application-form{align-items:start}
 .form-section{
@@ -2210,15 +2249,15 @@ th{
   position:sticky;
   top:0;
   z-index:1;
-  background:#eef3f6;
+  background:#f4f4f5;
   color:#405060;
   font-size:12px;
   letter-spacing:0;
   text-transform:uppercase;
 }
 tbody tr:last-child td{border-bottom:0}
-tr:hover td{background:#f8fafb}
-td b{font-weight:850}
+tr:hover td{background:var(--surface-3)}
+td b{font-weight:700}
 .pill,.tag{
   display:inline-flex;
   align-items:center;
@@ -2227,7 +2266,7 @@ td b{font-weight:850}
   padding:4px 9px;
   min-height:24px;
   font-size:12px;
-  font-weight:850;
+  font-weight:700;
   background:#edf2f5;
   color:#344554;
   margin:2px;
@@ -2243,12 +2282,18 @@ td b{font-weight:850}
   color:#674206;
   padding:11px 12px;
   margin:0 0 14px;
-  font-weight:760;
+  font-weight:600;
 }
 .notice.bad{background:var(--coral-soft);border-color:#e9a79e;color:#843128}
 .notice.good{background:var(--green-soft);border-color:#a7dac8;color:#105f45}
+.table-note{
+  margin:0 0 13px;
+  color:var(--muted);
+  line-height:1.45;
+}
+.table-note b{color:#166534}
 .details{display:grid;grid-template-columns:150px minmax(0,1fr);gap:9px 13px;margin:0}
-.details dt{font-weight:850;color:#4d5a67}
+.details dt{font-weight:700;color:#4d5a67}
 .details dd{margin:0;color:#263443;overflow-wrap:anywhere}
 .status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .status-grid div{
@@ -2257,7 +2302,7 @@ td b{font-weight:850}
   background:var(--surface-3);
   padding:12px;
 }
-.status-grid small{display:block;color:var(--muted);font-weight:850;margin-bottom:5px}
+.status-grid small{display:block;color:var(--muted);font-weight:700;margin-bottom:5px}
 .journey-panel{margin-bottom:18px}
 .journey{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .journey-step{
@@ -2292,6 +2337,7 @@ td b{font-weight:850}
   gap:3px;
 }
 .plain em,.versions em{color:#75818d;font-style:normal;font-size:13px}
+.plain .task-owner{color:#52525B;font-weight:600}
 .bars{display:grid;gap:10px}
 .bars div{display:grid;grid-template-columns:minmax(110px,170px) minmax(0,1fr) 40px;gap:10px;align-items:center}
 .bars span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -2326,8 +2372,33 @@ td b{font-weight:850}
 .review{max-width:1120px;margin:0 auto;padding:28px}
 .review-hero{grid-template-columns:minmax(0,1fr) 170px}
 .review-count{justify-items:start}
-.review-count b{font-size:40px}
+.review-count b{font-size:24px;line-height:1.1;overflow-wrap:anywhere}
+.review-count small{
+  color:var(--muted);
+  font-weight:600;
+  text-transform:uppercase;
+  font-size:12px;
+}
+.review-count span{overflow-wrap:anywhere}
 .review-item{margin-bottom:16px}
+.review-item .eyebrow{margin-bottom:3px}
+.review-meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:6px;
+  color:var(--muted);
+}
+.review-meta span{
+  display:inline-flex;
+  gap:5px;
+  align-items:center;
+  border:1px solid var(--line);
+  border-radius:999px;
+  padding:4px 8px;
+  background:var(--surface-3);
+}
+.review-meta b{color:#3f3f46;font-weight:600}
 .review-actions{
   display:grid;
   grid-template-columns:minmax(0,1fr) auto auto auto;
@@ -2335,6 +2406,7 @@ td b{font-weight:850}
   margin-top:13px;
 }
 .review-actions textarea{min-height:58px}
+.danger-check span{color:#843128}
 @media(max-width:1120px){
   .shell{grid-template-columns:244px minmax(0,1fr)}
   .metrics,.workflow-progress,.journey,.stage-board,.experience-path{grid-template-columns:repeat(2,minmax(0,1fr))}

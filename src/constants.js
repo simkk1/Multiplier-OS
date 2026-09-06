@@ -58,6 +58,30 @@ export const DEFAULT_FUNCTION_SUB_FUNCTIONS = {
   NPD: ["NPD (Innovation)", "NPD (R&D)", "NPD Packaging & Development"],
 };
 
+export const DEFAULT_TEAM1_MANAGERS = [
+  "Revant Bhate",
+  "Dhyanesh Shah",
+  "Rakesh Mohite",
+  "Neha Kamat",
+  "Pratik Limje",
+  "Geet Rathi",
+  "Mohnish Karjodkar",
+  "Abhinav Gupta",
+  "Pravin Devanathan",
+  "Nandini Raghavan",
+  "Sachin Singla",
+  "Tarun Talwar",
+  "Mayank Kumar",
+  "Rohit Ganapathi",
+  "Mridul Muralidharan",
+  "Ashutosh Shrivastava",
+  "Vaibhav Joneja",
+  "Pratish Bal",
+  "Subhro Sengupta",
+  "Shouvik Ghosh Roy",
+  "Shashank Upadhyay",
+];
+
 export const REQUIRED_FIELDS = [
   "applicant_name",
   "applicant_email",
@@ -94,6 +118,7 @@ export const STATUS_LABELS = {
   draft: "Draft",
   conflict: "Conflict",
   stale_draft: "Stale draft",
+  not_final: "Not final",
   submitted: "Submitted",
   needs_admin_review: "Admin review",
   manager_pending: "Manager pending",

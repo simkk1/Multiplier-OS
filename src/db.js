@@ -1,9 +1,10 @@
-import { DEFAULT_ADMIN_EMAIL, DEFAULT_FUNCTION_SUB_FUNCTIONS, DEFAULT_FUNCTIONS } from "./constants.js";
+import { DEFAULT_ADMIN_EMAIL, DEFAULT_FUNCTION_SUB_FUNCTIONS, DEFAULT_FUNCTIONS, DEFAULT_TEAM1_MANAGERS } from "./constants.js";
 import { createGmailDraft, gmailConfigured } from "./email.js";
 import {
   addHours,
   analyzeFlags,
   clean,
+  flagLabels,
   fromInputDateTime,
   isMaterialChange,
   norm,
@@ -98,8 +99,8 @@ function defaultRoutes() {
 
 function bootstrapTeam1Managers(env) {
   const parsed = safeJsonParse(env.TEAM1_MANAGERS_JSON, []);
-  if (!Array.isArray(parsed)) {
-    return [];
+  if (!Array.isArray(parsed) || !parsed.length) {
+    return DEFAULT_TEAM1_MANAGERS.map((name) => ({ name, email: "" }));
   }
   return parsed
     .map((manager) => {
@@ -336,7 +337,7 @@ function validateApplicantInput(data, cycle, flags) {
     }
   }
   if (blockers.length) {
-    throw new Error(`Fix before submit: ${blockers.join(", ")}`);
+    throw new Error(`Fix before submit: ${flagLabels(blockers).join("; ")}`);
   }
 }
 
@@ -600,7 +601,7 @@ export async function deptSplit(env, cycleId) {
 
 export async function listTasks(env, cycleId, onlyOpen = true) {
   const rows = await env.DB.prepare(
-    `SELECT t.*, s.applicant_name
+    `SELECT t.*, s.applicant_name, s.manager_name, s.manager_email
      FROM tasks t
      LEFT JOIN submissions s ON s.id = t.submission_id
      WHERE t.cycle_id = ? ${onlyOpen ? "AND t.status = 'open'" : ""}
@@ -705,6 +706,10 @@ export async function updateRouteEmails(env, cycleId, input, actor) {
   const routes = await listRoutes(env, cycleId);
   const statements = [];
   for (const route of routes) {
+    if (parseBool(input[`route_delete_${route.id}`])) {
+      statements.push(env.DB.prepare("DELETE FROM routing_rules WHERE id = ? AND cycle_id = ?").bind(route.id, cycleId));
+      continue;
+    }
     const department = clean(input[`route_department_${route.id}`]) || route.department;
     const subDepartment = clean(input[`route_sub_department_${route.id}`]);
     const ownerName = clean(input[`route_owner_name_${route.id}`]) || route.owner_name;
