@@ -10,6 +10,7 @@ import {
   ensureBoot,
   finalParticipants,
   finalizeDataset,
+  getApplicantFormDefinition,
   getLatestSubmissions,
   getSubmission,
   getSubmissionByEmail,
@@ -20,11 +21,15 @@ import {
   listTasks,
   listTeam1,
   restoreVersion,
+  resetApplicantFormDefinition,
   saveSnapshot,
   startNewQuarter,
   submitApplication,
+  updateApplicantFormDefinition,
   updateCycle,
+  updateDropdownLists,
   updateRouteEmails,
+  updateTeam1Managers,
 } from "./db.js";
 import { readUser, requireAdmin, requireMosaic, testAuthRoute } from "./auth.js";
 import {
@@ -43,6 +48,8 @@ import { makeXlsx } from "./xlsx.js";
 import {
   adminApprovals,
   adminDashboard,
+  adminFormPage,
+  adminFormPreviewPage,
   adminSubmissions,
   applicantForm,
   applicantHome,
@@ -112,20 +119,29 @@ async function route(request, env, cycle, ctx) {
   }
 
   if (path === "/apply" && request.method === "GET") {
-    const [submission, routes] = await Promise.all([getSubmissionByEmail(env, cycle.id, user.email), listRoutes(env, cycle.id)]);
-    return page({ title: "Apply", user, cycle, active: "apply", content: applicantForm({ user, cycle, submission, routes }) });
+    const [submission, routes, definition] = await Promise.all([
+      getSubmissionByEmail(env, cycle.id, user.email),
+      listRoutes(env, cycle.id),
+      getApplicantFormDefinition(env, cycle.id),
+    ]);
+    return page({ title: "Apply", user, cycle, active: "apply", content: applicantForm({ user, cycle, submission, routes, definition }) });
   }
 
   if (path === "/apply" && request.method === "POST") {
-    const [submission, routes] = await Promise.all([getSubmissionByEmail(env, cycle.id, user.email), listRoutes(env, cycle.id)]);
+    const [submission, routes, definition] = await Promise.all([
+      getSubmissionByEmail(env, cycle.id, user.email),
+      listRoutes(env, cycle.id),
+      getApplicantFormDefinition(env, cycle.id),
+    ]);
     if (!cycle.application_open && !(cycle.edit_open && submission)) {
-      return page({ title: "Apply", user, cycle, active: "apply", content: applicantForm({ user, cycle, submission, routes, error: "Applications closed. Admin can open cohort edit access." }) });
+      return page({ title: "Apply", user, cycle, active: "apply", content: applicantForm({ user, cycle, submission, routes, definition, error: "Applications closed. Admin can open cohort edit access." }) });
     }
+    const input = await formData(request);
     try {
-      await submitApplication(env, cycle, user, await formData(request));
+      await submitApplication(env, cycle, user, input, "applicant", definition);
       return redirect("/status");
     } catch (error) {
-      return page({ title: "Apply", user, cycle, active: "apply", content: applicantForm({ user, cycle, submission, routes, error: error.message }) });
+      return page({ title: "Apply", user, cycle, active: "apply", content: applicantForm({ user, cycle, submission, routes, definition, draft: input, error: error.message }) });
     }
   }
 
@@ -260,6 +276,57 @@ async function adminRoute(request, env, cycle, user) {
     }
   }
 
+  if (path === "/admin/form" && request.method === "GET") {
+    const [definition, routes] = await Promise.all([getApplicantFormDefinition(env, cycle.id), listRoutes(env, cycle.id)]);
+    return page({
+      title: "Form",
+      user,
+      cycle,
+      active: "form",
+      content: adminFormPage({ definition, routes, notice: url.searchParams.get("notice") || "" }),
+    });
+  }
+
+  if (path === "/admin/form/preview" && request.method === "GET") {
+    const [definition, routes] = await Promise.all([getApplicantFormDefinition(env, cycle.id), listRoutes(env, cycle.id)]);
+    return page({
+      title: "Form Preview",
+      user,
+      cycle,
+      active: "form",
+      content: adminFormPreviewPage({ user, cycle, definition, routes, notice: url.searchParams.get("notice") || "" }),
+    });
+  }
+
+  if (path === "/admin/form/preview" && request.method === "POST") {
+    const data = await formData(request);
+    await updateApplicantFormDefinition(env, cycle.id, data, user.email);
+    await updateDropdownLists(env, cycle.id, data, user.email);
+    return redirectWithNotice("/admin/form/preview", "Saved. Preview updated.", "good");
+  }
+
+  if (path === "/admin/form" && request.method === "POST") {
+    const data = await formData(request);
+    await updateApplicantFormDefinition(env, cycle.id, data, user.email);
+    await updateDropdownLists(env, cycle.id, data, user.email);
+    return redirectWithNotice("/admin/form", "Form changes saved.", "good");
+  }
+
+  if (path === "/admin/form/reset" && request.method === "POST") {
+    await resetApplicantFormDefinition(env, cycle.id, user.email);
+    return redirectWithNotice("/admin/form", "Form reset to the current default.", "good");
+  }
+
+  if (path === "/admin/form/dropdowns" && request.method === "POST") {
+    await updateDropdownLists(env, cycle.id, await formData(request), user.email);
+    return redirectWithNotice("/admin/form", "Dropdown changes saved.", "good");
+  }
+
+  if (path === "/admin/form/dropdowns/add" && request.method === "POST") {
+    await addRoute(env, cycle.id, await formData(request), user.email);
+    return redirectWithNotice("/admin/form", "Dropdown option added.", "good");
+  }
+
   if (path === "/admin/routes" && request.method === "GET") {
     const [routes, team1] = await Promise.all([listRoutes(env, cycle.id), listTeam1(env, cycle.id)]);
     return page({ title: "Routes", user, cycle, active: "routes", content: routesPage({ routes, team1 }) });
@@ -280,6 +347,11 @@ async function adminRoute(request, env, cycle, user) {
     return redirect("/admin/routes");
   }
 
+  if (path === "/admin/team1" && request.method === "POST") {
+    await updateTeam1Managers(env, cycle.id, await formData(request), user.email);
+    return redirect("/admin/routes");
+  }
+
   if (path === "/admin/tasks" && request.method === "GET") {
     const tasks = await listTasks(env, cycle.id);
     return page({ title: "Tasks", user, cycle, active: "admin", content: tasksPage({ tasks }) });
@@ -292,8 +364,12 @@ async function adminRoute(request, env, cycle, user) {
   }
 
   if (path === "/admin/audit" && request.method === "GET") {
-    const events = await auditList(env, cycle.id);
-    return page({ title: "Audit", user, cycle, active: "audit", content: auditPage({ events }) });
+    try {
+      const events = await auditList(env, cycle.id);
+      return page({ title: "Audit", user, cycle, active: "audit", content: auditPage({ events }) });
+    } catch (error) {
+      return page({ title: "Audit", user, cycle, active: "audit", content: auditPage({ events: [], error: error.message }) });
+    }
   }
 
   if (path === "/admin/snapshot" && request.method === "POST") {
@@ -364,10 +440,14 @@ function page(props) {
 }
 
 async function exportXlsx(env, cycle) {
-  const submissions = await getLatestSubmissions(env, cycle.id);
-  const finals = await finalParticipants(env, cycle.id);
+  const [submissions, finals, definition] = await Promise.all([
+    getLatestSubmissions(env, cycle.id),
+    finalParticipants(env, cycle.id),
+    getApplicantFormDefinition(env, cycle.id),
+  ]);
+  const extraFields = exportExtraFields(definition);
   const submissionRows = [
-    ["Name", "Email", "Department", "Sub Department", "Manager", "Manager Email", "Regular OKR", "Baseline", "AOP", "Multiplier Target", "Flywheel Parts", "Flywheel Explanation", "Manager Status", "Function Status", "Final Status", "Version", "Updated At"],
+    ["Name", "Email", "Department", "Sub Department", "Manager", "Manager Email", "Regular OKR", "Baseline", "AOP", "Multiplier Target", "Flywheel Parts", "Flywheel Explanation", ...extraFields.map((field) => field.label), "Manager Status", "Function Status", "Final Status", "Version", "Updated At"],
     ...submissions.map((row) => {
       const data = rowData(row);
       return [
@@ -383,6 +463,7 @@ async function exportXlsx(env, cycle) {
         data.multiplier_target || "",
         data.flywheel_parts || "",
         data.flywheel || "",
+        ...extraFields.map((field) => data[field.name] || ""),
         row.manager_status,
         row.function_status,
         row.final_status,
@@ -405,6 +486,38 @@ async function exportXlsx(env, cycle) {
       "content-disposition": `attachment; filename="multipliers-${cycle.name.replace(/[^a-z0-9]+/gi, "-")}.xlsx"`,
     },
   });
+}
+
+function exportExtraFields(definition) {
+  const builtIn = new Set([
+    "applicant_name",
+    "applicant_email",
+    "manager_name",
+    "manager_email",
+    "department",
+    "sub_department",
+    "regular_okr",
+    "baseline",
+    "aop",
+    "multiplier_target",
+    "flywheel_parts",
+    "flywheel",
+    "manager_aligned",
+    "support_required",
+    "team_vision",
+  ]);
+  const seen = new Set();
+  const fields = [];
+  for (const section of definition.sections || []) {
+    for (const field of section.fields || []) {
+      if (!field.name || builtIn.has(field.name) || seen.has(field.name)) {
+        continue;
+      }
+      seen.add(field.name);
+      fields.push({ name: field.name, label: field.label || field.name });
+    }
+  }
+  return fields;
 }
 
 async function enforceWindow(env, cycle) {

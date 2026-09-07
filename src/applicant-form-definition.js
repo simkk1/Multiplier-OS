@@ -89,7 +89,6 @@ export const APPLICANT_FORM_DEFINITION = {
           kind: "textarea",
           name: "aop",
           label: "What is the AOP?",
-          requiredWhen: "aop_required",
           help: "Add this if your team works with an Annual Operating Plan (AOP) number.",
           example: "Example: AOP target is 21% repeat purchase for the quarter.",
         },

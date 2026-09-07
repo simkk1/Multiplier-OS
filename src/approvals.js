@@ -266,28 +266,16 @@ async function refreshedApprovalBody(env, cycle, request) {
 }
 
 function managerBody(cycle, group, reviewUrl) {
-  const blocks = group.rows.map(({ applicant_name, data }) => {
-    return [
-      `**${applicant_name}**`,
-      `__Regular OKR:__ ${data.regular_okr || "-"}`,
-      `__Baseline:__ ${data.baseline || "-"}`,
-      `__AOP:__ ${data.aop || "-"}`,
-      `__Multiplier target:__ ${data.multiplier_target || "-"}`,
-      `__Team vision:__ ${data.team_vision || "-"}`,
-      `__Flywheel:__ ${data.flywheel_parts || data.flywheel || "-"}`,
-      data.flywheel_parts ? `__Flywheel explanation:__ ${data.flywheel || "-"}` : "",
-      `__Support required:__ ${data.support_required || "-"}`,
-    ].filter(Boolean).join("\n");
-  });
+  const blocks = group.rows.map((row, index) => compactApplicantBlock(row, index));
   return `Hi ${group.reviewer_name},
 
 Hope you're having a great day!
 
-I'm reaching out wrt ${cycle.name} Multiplier cycle applications. The following people from your team have applied for this cycle with the following multiplier targets:
+I'm reaching out wrt ${cycle.name} Multiplier cycle applications. Sharing the crisp version below for your review:
 
 ${blocks.join("\n\n")}
 
-Wanted your thoughts on whether these are in line with the team vision / focus areas for the quarter, whether they can be sharpened further, and if they're ambitious enough. Would love your view on whether these are GTG or should be reworked.
+Wanted your view on whether these are GTG or need rework.
 
 You can reply to this email naturally. If the review page is easier, the latest version is here:
 ${reviewUrl}
@@ -306,36 +294,20 @@ function functionBody(cycle, group, reviewUrl) {
     bySub.get(key).push(row);
   }
   const sections = [...bySub.entries()].map(([sub, rows]) => {
-    const items = rows.map(({ applicant_name, manager_status, manager_reason, data }) => {
-      const note = manager_status === "skipped"
-        ? "Team 1 manager-skipped: direct-report approval included in this mail."
-        : manager_status === "rejected"
-          ? `Manager rejected with reason; included for your call. Reason: ${manager_reason || "-"}`
-          : "Manager approved.";
-      return [
-        `**${applicant_name}**`,
-        `__Manager status:__ ${note}`,
-        `__Regular OKR:__ ${data.regular_okr || "-"}`,
-        `__Baseline:__ ${data.baseline || "-"}`,
-        `__AOP:__ ${data.aop || "-"}`,
-        `__Multiplier target:__ ${data.multiplier_target || "-"}`,
-        `__Flywheel:__ ${data.flywheel_parts || data.flywheel || "-"}`,
-        data.flywheel_parts ? `__Flywheel explanation:__ ${data.flywheel || "-"}` : "",
-      ].filter(Boolean).join("\n");
-    });
+    const items = rows.map((row, index) => compactApplicantBlock(row, index, approvalNote(row)));
     return `__${sub}:__\n${items.join("\n\n")}`;
   });
   return `Hi ${group.reviewer_name},
 
 Hope you're having a great day!
 
-I'm reaching out wrt ${cycle.name} Multiplier cycle applications for your function.
+I'm reaching out wrt ${cycle.name} Multiplier cycle applications for your function. Sharing the crisp version below for your review.
 
-Managers have approved rows marked below. Your direct reportees are included here for your approval so they do not get a duplicate manager mail.
+Managers have approved the rows below unless a note says otherwise. Your direct reportees are included here for your approval so they do not get a duplicate manager mail.
 
 ${sections.join("\n\n---\n\n")}
 
-Wanted your thoughts on whether these are in line with the function vision / focus areas for the quarter, whether they can be sharpened further, and if they're ambitious enough. Would love your view on whether these are GTG or should be reworked.
+Wanted your view on whether these are GTG or need rework.
 
 You can reply to this email naturally. If the review page is easier, the latest version is here:
 ${reviewUrl}
@@ -344,12 +316,32 @@ Best,
 Team Multipliers`;
 }
 
+function compactApplicantBlock({ applicant_name, data }, index, note = "") {
+  return [
+    `${index + 1}. **${applicant_name}**`,
+    note ? `   __Note:__ ${note}` : "",
+    `   __Multiplier:__ ${data.multiplier_target || "-"}`,
+    `   __Baseline:__ ${data.baseline || "-"}`,
+    `   __AOP:__ ${data.aop || "-"}`,
+  ].filter(Boolean).join("\n");
+}
+
+function approvalNote(row) {
+  if (row.manager_status === "skipped") {
+    return "Direct reportee; approval included here.";
+  }
+  if (row.manager_status === "rejected") {
+    return `Manager rejected: ${row.manager_reason || "-"}`;
+  }
+  return "";
+}
+
 function approvalBodyHtml(body) {
   const html = escapeHtml(body)
     .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
     .replace(/__(.*?):__/g, '<span style="text-decoration:underline;font-weight:600">$1:</span>')
     .replace(/__(.*?):/g, '<span style="text-decoration:underline;font-weight:600">$1:</span>')
-    .replace(/(https:\/\/[^\s<]+)/g, '<a href="$1" style="color:#166534;">$1</a>');
+    .replace(/(https:\/\/[^\s<]+)/g, '<a href="$1" style="color:#0F5745;">$1</a>');
   const paragraphs = html
     .split(/\n{2,}/)
     .map((block) => `<p style="margin:0 0 16px;line-height:1.55;">${block.replace(/\n/g, "<br>")}</p>`)

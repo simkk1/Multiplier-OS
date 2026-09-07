@@ -12,7 +12,7 @@ const REQUIRED_FIELD_COPY = {
   aop: "AOP",
   team_vision: "Team vision",
   flywheel_parts: "Flywheel part",
-  flywheel: "Flywheel explanation",
+  flywheel: "Explain how this moves the flywheel",
 };
 
 const PLACEHOLDER_ANSWERS = new Set([
@@ -211,7 +211,7 @@ export function flagLabels(flags) {
   return (flags || []).map((flag) => {
     if (String(flag).startsWith("blank_required:")) {
       const field = String(flag).split(":")[1] || "";
-      return `Blank required field: ${REQUIRED_FIELD_COPY[field] || field || "Unknown field"}`;
+      return REQUIRED_FIELD_COPY[field] || field || "Unknown field";
     }
     return OBJECTIVE_FLAG_COPY[flag] || flag;
   });

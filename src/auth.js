@@ -4,6 +4,7 @@ import { clean, escapeAttr, escapeHtml, html, norm } from "./util.js";
 
 const TEST_COOKIE = "multipliers_test_auth";
 const TEST_COOKIE_MAX_AGE = 8 * 60 * 60;
+const LOCAL_TEST_AUTH_KEY = "local-preview";
 
 export async function readUser(request, env, ctx) {
   const accessIdentity = await readCloudflareAccessIdentity(ctx);
@@ -50,7 +51,7 @@ export async function readUser(request, env, ctx) {
     isMosaic: Boolean(testProfile) || (orgDomain ? emailNorm.endsWith(`@${orgDomain}`) : false),
     isAdmin: testProfile === "admin" || admins.includes(emailNorm),
     isTestUser: Boolean(testProfile),
-    canUseTestProfiles: testAuthEnabled(env) && Boolean(testAuthKey(env)),
+    canUseTestProfiles: testAuthEnabled(env) && Boolean(effectiveTestAuthKey(env, request)),
   };
 }
 
@@ -60,7 +61,7 @@ export async function testAuthRoute(request, env) {
     return redirectWithCookie("/", clearTestCookie(request));
   }
   if (url.pathname === "/test-profile" && request.method === "POST") {
-    if (!testAuthEnabled(env) || !testAuthKey(env)) {
+    if (!testAuthEnabled(env) || !effectiveTestAuthKey(env, request)) {
       return html("Temporary test access is not enabled.", { status: 404 });
     }
     const currentProfile = await readTestProfile(request, env);
@@ -76,14 +77,17 @@ export async function testAuthRoute(request, env) {
     return null;
   }
   if (!testAuthEnabled(env)) {
-    return html(testLoginPage({ error: "Temporary test access is not enabled.", next: "/" }), { status: 404 });
+    return html(testLoginPage({ error: "Temporary test access is not enabled.", next: "/", localBypass: isLocalRequest(request) }), { status: 404 });
   }
-  if (!testAuthKey(env)) {
-    return html(testLoginPage({ error: "Temporary test access is enabled but no test key is configured.", next: "/" }), { status: 503 });
+  const key = effectiveTestAuthKey(env, request);
+  const localBypass = isLocalRequest(request);
+  if (!key) {
+    return html(testLoginPage({ error: "Temporary test access is enabled but no test key is configured.", next: "/", localBypass }), { status: 503 });
   }
   if (request.method === "GET") {
-    const profile = safeProfile(url.searchParams.get("profile"));
-    return html(testLoginPage({ next: safeNext(url.searchParams.get("next"), profile === "applicant" ? "/" : "/admin"), profile }));
+    const requestedNext = url.searchParams.get("next");
+    const profile = url.searchParams.has("profile") ? safeProfile(url.searchParams.get("profile")) : defaultProfileForNext(requestedNext);
+    return html(testLoginPage({ next: safeNext(requestedNext, profile === "applicant" ? "/" : "/admin"), profile, localBypass }));
   }
   if (request.method !== "POST") {
     return html("Method not allowed", { status: 405 });
@@ -96,8 +100,8 @@ export async function testAuthRoute(request, env) {
   if (profile === "applicant" && next.startsWith("/admin")) {
     next = "/";
   }
-  if (password !== testAuthKey(env)) {
-    return html(testLoginPage({ error: "That test code did not match.", next, profile }), { status: 401 });
+  if (!localBypass && password !== key) {
+    return html(testLoginPage({ error: "That test code did not match.", next, profile, localBypass }), { status: 401 });
   }
   return redirectWithCookie(next, await makeTestCookie(profile, env, request));
 }
@@ -158,7 +162,7 @@ async function readCloudflareAccessIdentity(ctx) {
 }
 
 async function readTestProfile(request, env) {
-  if (!testAuthEnabled(env) || !testAuthKey(env)) {
+  if (!testAuthEnabled(env) || !effectiveTestAuthKey(env, request)) {
     return "";
   }
   const value = cookieValue(request.headers.get("cookie") || "", TEST_COOKIE);
@@ -169,12 +173,12 @@ async function readTestProfile(request, env) {
   if (!["admin", "applicant"].includes(profile)) {
     return "";
   }
-  const expected = await signProfile(profile, env);
+  const expected = await signProfile(profile, env, request);
   return signature === expected ? profile : "";
 }
 
 async function makeTestCookie(profile, env, request) {
-  const value = `${profile}.${await signProfile(profile, env)}`;
+  const value = `${profile}.${await signProfile(profile, env, request)}`;
   return `${TEST_COOKIE}=${value}; Path=/; HttpOnly${secureCookiePart(request)}; SameSite=Lax; Max-Age=${TEST_COOKIE_MAX_AGE}`;
 }
 
@@ -186,8 +190,8 @@ function secureCookiePart(request) {
   return new URL(request.url).protocol === "https:" ? "; Secure" : "";
 }
 
-async function signProfile(profile, env) {
-  const bytes = new TextEncoder().encode(`${profile}:${testAuthKey(env)}:multipliers-os`);
+async function signProfile(profile, env, request) {
+  const bytes = new TextEncoder().encode(`${profile}:${effectiveTestAuthKey(env, request)}:multipliers-os`);
   const hash = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
@@ -203,9 +207,22 @@ function safeProfile(value) {
   return clean(value) === "applicant" ? "applicant" : "admin";
 }
 
+function defaultProfileForNext(value) {
+  return clean(value).startsWith("/admin") ? "admin" : "applicant";
+}
+
 function safeNext(value, fallback = "/admin") {
   const next = clean(value);
   return next.startsWith("/") && !next.startsWith("//") ? next : fallback;
+}
+
+function effectiveTestAuthKey(env, request) {
+  return testAuthKey(env) || (isLocalRequest(request) ? LOCAL_TEST_AUTH_KEY : "");
+}
+
+function isLocalRequest(request) {
+  const host = new URL(request.url).hostname;
+  return host === "127.0.0.1" || host === "localhost" || host === "::1";
 }
 
 function redirectWithCookie(location, cookie) {
@@ -218,7 +235,7 @@ function redirectWithCookie(location, cookie) {
   });
 }
 
-function testLoginPage({ error = "", next = "/admin", profile = "admin" }) {
+function testLoginPage({ error = "", next = "/admin", profile = "admin", localBypass = false }) {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -228,7 +245,7 @@ function testLoginPage({ error = "", next = "/admin", profile = "admin" }) {
   <style>
     :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;color:#17202a;background:#f5f7fa}
     *{box-sizing:border-box}
-    body{margin:0;min-height:100vh;display:grid;place-items:center;background:linear-gradient(135deg,#f8fbfc 0,#eef5f1 54%,#f2f0fb 100%);padding:24px}
+    body{margin:0;min-height:100vh;display:grid;place-items:center;background:#FAFAF9;padding:24px}
     main{width:min(460px,100%);background:#fff;border:1px solid #d8e0e7;border-radius:8px;box-shadow:0 18px 48px rgba(18,32,50,.10);padding:24px}
     .logo{display:block;width:min(270px,100%);margin-bottom:22px}
     .logo img{display:block;width:100%;height:auto}
@@ -238,8 +255,8 @@ function testLoginPage({ error = "", next = "/admin", profile = "admin" }) {
     label span{display:block;margin-bottom:6px}
     input,select,button{width:100%;min-height:42px;border-radius:7px;font:inherit}
     input,select{border:1px solid #b8c5d1;padding:10px 11px;background:#fff;color:#17202a}
-    input:focus,select:focus{outline:0;border-color:#2764a8;box-shadow:0 0 0 3px rgba(39,100,168,.14)}
-    button{border:0;background:#16785f;color:#fff;font-weight:850;cursor:pointer}
+    input:focus,select:focus{outline:0;border-color:#0F5745;box-shadow:0 0 0 3px rgba(15,87,69,.14)}
+    button{border:0;background:#0F5745;color:#fff;font-weight:850;cursor:pointer}
     .error{border:1px solid #e9a79e;background:#ffe7e3;color:#843128;border-radius:8px;padding:11px 12px;margin-bottom:14px;font-weight:760}
   </style>
 </head>
@@ -247,7 +264,7 @@ function testLoginPage({ error = "", next = "/admin", profile = "admin" }) {
   <main>
     <span class="logo"><img src="${MULTIPLIERS_LOGO_DATA_URI}" alt="Multipliers"></span>
     <h1>Temporary test access</h1>
-    <p>Use the temporary code to preview Multipliers OS without company login during this test phase.</p>
+    <p>${localBypass ? "Local preview is open. Pick a side and enter." : "Use the temporary code to preview Multipliers OS without company login during this test phase."}</p>
     ${error ? `<div class="error">${escapeHtml(error)}</div>` : ""}
     <form method="post" action="/test-login">
       <input type="hidden" name="next" value="${escapeAttr(next)}">
@@ -255,7 +272,7 @@ function testLoginPage({ error = "", next = "/admin", profile = "admin" }) {
         <option value="admin" ${profile === "admin" ? "selected" : ""}>Admin cockpit</option>
         <option value="applicant" ${profile === "applicant" ? "selected" : ""}>User / applicant view</option>
       </select></label>
-      <label><span>Test code</span><input name="password" type="password" autocomplete="current-password" autofocus required></label>
+      ${localBypass ? "" : `<label><span>Test code</span><input name="password" type="password" autocomplete="current-password" autofocus required></label>`}
       <button>Enter Multipliers OS</button>
     </form>
   </main>

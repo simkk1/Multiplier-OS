@@ -1,3 +1,4 @@
+import { APPLICANT_FORM_DEFINITION } from "./applicant-form-definition.js";
 import { DEFAULT_ADMIN_EMAIL, DEFAULT_FUNCTION_SUB_FUNCTIONS, DEFAULT_FUNCTIONS, DEFAULT_TEAM1_MANAGERS } from "./constants.js";
 import { createGmailDraft, gmailConfigured } from "./email.js";
 import {
@@ -7,6 +8,7 @@ import {
   flagLabels,
   fromInputDateTime,
   isMaterialChange,
+  isMissingAnswer,
   norm,
   nowIso,
   parseBool,
@@ -25,6 +27,14 @@ export async function ensureBoot(env) {
       .run();
   }
   const cycle = await getCycle(env);
+  if (cycle.aop_required) {
+    await env.DB.prepare("UPDATE cycles SET aop_required = 0, updated_at = ? WHERE id = ?")
+      .bind(nowIso(), cycle.id)
+      .run();
+    cycle.aop_required = 0;
+  }
+  await ensureFormConfigTable(env);
+  await ensureFormConfig(env, cycle.id, "system");
   const routes = await env.DB.prepare("SELECT COUNT(*) AS count FROM routing_rules WHERE cycle_id = ?")
     .bind(cycle.id)
     .first();
@@ -55,11 +65,13 @@ export async function ensureBoot(env) {
       await env.DB.batch(statements);
     }
   }
+  await fillBlankTeam1Emails(env, cycle.id);
   await refreshObjectiveFlags(env, cycle);
   return cycle;
 }
 
 async function refreshObjectiveFlags(env, cycle) {
+  const definition = await getApplicantFormDefinition(env, cycle.id);
   const rows = await env.DB.prepare(
     `SELECT s.id, s.status, s.objective_flags_json, v.data_json
      FROM submissions s
@@ -71,7 +83,7 @@ async function refreshObjectiveFlags(env, cycle) {
   const statements = [];
   for (const row of rows.results || []) {
     const data = safeJsonParse(row.data_json, {});
-    const flags = analyzeFlags(data, cycle);
+    const flags = submissionFlags(data, cycle, definition);
     const nextFlags = JSON.stringify(flags);
     if (nextFlags === row.objective_flags_json) {
       continue;
@@ -84,6 +96,82 @@ async function refreshObjectiveFlags(env, cycle) {
   if (statements.length) {
     await env.DB.batch(statements);
   }
+}
+
+async function ensureFormConfigTable(env) {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS form_configs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cycle_id INTEGER NOT NULL UNIQUE,
+      definition_json TEXT NOT NULL,
+      updated_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      FOREIGN KEY (cycle_id) REFERENCES cycles(id)
+    )`
+  ).run();
+}
+
+async function ensureFormConfig(env, cycleId, actor) {
+  const existing = await env.DB.prepare("SELECT id FROM form_configs WHERE cycle_id = ?")
+    .bind(cycleId)
+    .first();
+  if (existing) {
+    return;
+  }
+  await env.DB.prepare(
+    "INSERT INTO form_configs (cycle_id, definition_json, updated_by_email) VALUES (?, ?, ?)"
+  )
+    .bind(cycleId, JSON.stringify(cloneDefaultDefinition()), actor)
+    .run();
+}
+
+export async function getApplicantFormDefinition(env, cycleId) {
+  await ensureFormConfigTable(env);
+  const row = await env.DB.prepare("SELECT definition_json FROM form_configs WHERE cycle_id = ?")
+    .bind(cycleId)
+    .first();
+  if (!row) {
+    await ensureFormConfig(env, cycleId, "system");
+    return cloneDefaultDefinition();
+  }
+  return normalizeFormDefinition(safeJsonParse(row.definition_json, null) || cloneDefaultDefinition());
+}
+
+export async function updateApplicantFormDefinition(env, cycleId, input, actor) {
+  await ensureFormConfigTable(env);
+  const before = await getApplicantFormDefinition(env, cycleId);
+  const after = definitionFromFormInput(before, input);
+  await env.DB.prepare(
+    `INSERT INTO form_configs (cycle_id, definition_json, updated_by_email, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(cycle_id) DO UPDATE SET
+       definition_json = excluded.definition_json,
+       updated_by_email = excluded.updated_by_email,
+       updated_at = excluded.updated_at`
+  )
+    .bind(cycleId, JSON.stringify(after), actor, nowIso())
+    .run();
+  await audit(env, cycleId, actor, "form", cycleId, "form_definition_updated", JSON.stringify(before), JSON.stringify(after));
+  return after;
+}
+
+export async function resetApplicantFormDefinition(env, cycleId, actor) {
+  await ensureFormConfigTable(env);
+  const before = await getApplicantFormDefinition(env, cycleId);
+  const after = cloneDefaultDefinition();
+  await env.DB.prepare(
+    `INSERT INTO form_configs (cycle_id, definition_json, updated_by_email, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(cycle_id) DO UPDATE SET
+       definition_json = excluded.definition_json,
+       updated_by_email = excluded.updated_by_email,
+       updated_at = excluded.updated_at`
+  )
+    .bind(cycleId, JSON.stringify(after), actor, nowIso())
+    .run();
+  await audit(env, cycleId, actor, "form", cycleId, "form_definition_reset", JSON.stringify(before), JSON.stringify(after));
+  return after;
 }
 
 function primaryAdminEmail(env) {
@@ -128,7 +216,7 @@ function defaultRoutes() {
 function bootstrapTeam1Managers(env) {
   const parsed = safeJsonParse(env.TEAM1_MANAGERS_JSON, []);
   if (!Array.isArray(parsed) || !parsed.length) {
-    return DEFAULT_TEAM1_MANAGERS.map((name) => ({ name, email: "" }));
+    return defaultTeam1Managers();
   }
   return parsed
     .map((manager) => {
@@ -138,6 +226,257 @@ function bootstrapTeam1Managers(env) {
       return { name: clean(manager?.name), email: clean(manager?.email) };
     })
     .filter((manager) => manager.name);
+}
+
+function defaultTeam1Managers() {
+  return DEFAULT_TEAM1_MANAGERS.map((manager) => {
+    if (typeof manager === "string") {
+      return { name: clean(manager), email: "" };
+    }
+    return { name: clean(manager?.name), email: clean(manager?.email) };
+  }).filter((manager) => manager.name);
+}
+
+async function fillBlankTeam1Emails(env, cycleId) {
+  const statements = defaultTeam1Managers()
+    .filter((manager) => manager.email)
+    .map((manager) =>
+      env.DB.prepare(
+        `UPDATE team1_managers
+         SET manager_email = ?, manager_email_norm = ?
+         WHERE cycle_id = ? AND manager_name_norm = ?
+           AND (manager_email IS NULL OR manager_email = '')`
+      ).bind(manager.email, norm(manager.email), cycleId, norm(manager.name))
+    );
+  if (statements.length) {
+    await env.DB.batch(statements);
+  }
+}
+
+const FORM_FIELD_KINDS = new Set(["text", "email", "number", "date", "textarea", "select", "checkbox", "checkboxGroup", "locked"]);
+const FORM_OPTION_SETS = new Set(["functions", "subFunctions"]);
+
+function cloneDefaultDefinition() {
+  return JSON.parse(JSON.stringify(APPLICANT_FORM_DEFINITION));
+}
+
+function normalizeFormDefinition(definition) {
+  const fallback = cloneDefaultDefinition();
+  const source = definition && typeof definition === "object" ? definition : fallback;
+  const sections = Array.isArray(source.sections)
+    ? source.sections.map(normalizeFormSection).filter(Boolean)
+    : [];
+  return {
+    title: clean(source.title) || fallback.title,
+    eyebrow: clean(source.eyebrow) || fallback.eyebrow,
+    intro: clean(source.intro) || fallback.intro,
+    submitCopy: {
+      create: clean(source.submitCopy?.create) || fallback.submitCopy.create,
+      update: clean(source.submitCopy?.update) || fallback.submitCopy.update,
+    },
+    sections: sections.length ? sections : fallback.sections,
+  };
+}
+
+function normalizeFormSection(section, index) {
+  const title = clean(section?.title) || `Section ${index + 1}`;
+  const id = slugify(clean(section?.id) || title) || `section_${index + 1}`;
+  const fields = Array.isArray(section?.fields)
+    ? section.fields.map(normalizeFormField).filter(Boolean)
+    : [];
+  return {
+    id,
+    number: clean(section?.number) || String(index + 1).padStart(2, "0"),
+    title,
+    navTitle: clean(section?.navTitle) || title,
+    intro: clean(section?.intro),
+    fields,
+  };
+}
+
+function normalizeFormField(field) {
+  const name = fieldKey(field?.name || field?.label);
+  const label = clean(field?.label) || labelFromName(name);
+  if (!name || !label) {
+    return null;
+  }
+  const kind = FORM_FIELD_KINDS.has(clean(field?.kind)) ? clean(field.kind) : "text";
+  const next = { kind, name, label };
+  if (field?.required && name !== "aop") {
+    next.required = true;
+  }
+  if (clean(field?.requiredWhen) && name !== "aop") {
+    next.requiredWhen = clean(field.requiredWhen);
+  }
+  if (clean(field?.optionSet) && FORM_OPTION_SETS.has(clean(field.optionSet))) {
+    next.optionSet = clean(field.optionSet);
+  }
+  const options = Array.isArray(field?.options) ? uniqueCleanValues(field.options) : optionLines(field?.options);
+  if (options.length) {
+    next.options = options;
+  }
+  if (clean(field?.help)) {
+    next.help = clean(field.help);
+  }
+  if (clean(field?.example)) {
+    next.example = clean(field.example);
+  }
+  return next;
+}
+
+function definitionFromFormInput(current, input) {
+  const baseline = normalizeFormDefinition(current);
+  const sectionCount = Number(input.section_count || baseline.sections.length || 0);
+  const sections = [];
+  const sectionIds = new Set();
+  const fieldNames = new Set();
+
+  for (let i = 0; i < sectionCount; i += 1) {
+    if (parseBool(input[`section_delete_${i}`])) {
+      continue;
+    }
+    const sectionTitle = clean(input[`section_${i}_title`] || baseline.sections[i]?.title || `Section ${i + 1}`);
+    const section = {
+      id: uniqueId(slugify(input[`section_${i}_id`] || sectionTitle) || `section_${i + 1}`, sectionIds),
+      number: clean(input[`section_${i}_number`] || baseline.sections[i]?.number || String(i + 1).padStart(2, "0")),
+      title: sectionTitle,
+      navTitle: clean(input[`section_${i}_nav_title`] || baseline.sections[i]?.navTitle || sectionTitle),
+      intro: clean(input[`section_${i}_intro`]),
+      fields: [],
+    };
+    const fieldCount = Number(input[`field_count_${i}`] || baseline.sections[i]?.fields?.length || 0);
+    for (let j = 0; j < fieldCount; j += 1) {
+      if (parseBool(input[`field_${i}_${j}_delete`])) {
+        continue;
+      }
+      const field = fieldFromInput(input, `field_${i}_${j}`, fieldNames, baseline.sections[i]?.fields?.[j]);
+      if (field) {
+        section.fields.push(field);
+      }
+    }
+    sections.push(section);
+  }
+
+  const newSectionTitle = clean(input.new_section_title);
+  if (newSectionTitle) {
+    sections.push({
+      id: uniqueId(slugify(input.new_section_id || newSectionTitle) || `section_${sections.length + 1}`, sectionIds),
+      number: clean(input.new_section_number) || String(sections.length + 1).padStart(2, "0"),
+      title: newSectionTitle,
+      navTitle: clean(input.new_section_nav_title) || newSectionTitle,
+      intro: clean(input.new_section_intro),
+      fields: [],
+    });
+  }
+
+  const newField = fieldFromInput(input, "new_question", fieldNames, {});
+  if (newField) {
+    const targetId = clean(input.new_question_section_id);
+    const target = sections.find((section) => section.id === targetId) || sections[sections.length - 1] || sections[0];
+    if (target) {
+      target.fields.push(newField);
+    }
+  }
+
+  return normalizeFormDefinition({
+    title: clean(input.form_title) || baseline.title,
+    eyebrow: clean(input.form_eyebrow) || baseline.eyebrow,
+    intro: clean(input.form_intro),
+    submitCopy: {
+      create: clean(input.submit_create) || baseline.submitCopy.create,
+      update: clean(input.submit_update) || baseline.submitCopy.update,
+    },
+    sections: sections.length ? sections : baseline.sections,
+  });
+}
+
+function fieldFromInput(input, key, usedNames, fallback = {}) {
+  const label = clean(input[`${key}_label`] || fallback.label);
+  const rawName = clean(input[`${key}_name`] || fallback.name || label);
+  const name = uniqueId(fieldKey(rawName), usedNames);
+  if (!label || !name) {
+    return null;
+  }
+  const kindInput = clean(input[`${key}_kind`] || fallback.kind || "text");
+  const kind = FORM_FIELD_KINDS.has(kindInput) ? kindInput : "text";
+  const field = { kind, name, label };
+  if (parseBool(input[`${key}_required`])) {
+    field.required = true;
+  }
+  const requiredWhen = clean(input[`${key}_required_when`]);
+  if (requiredWhen) {
+    field.requiredWhen = requiredWhen;
+  }
+  const optionSet = clean(input[`${key}_option_set`]);
+  if (FORM_OPTION_SETS.has(optionSet)) {
+    field.optionSet = optionSet;
+  }
+  const options = optionLines(input[`${key}_options`]);
+  if (options.length) {
+    field.options = options;
+  }
+  const help = clean(input[`${key}_help`]);
+  if (help) {
+    field.help = help;
+  }
+  const example = clean(input[`${key}_example`]);
+  if (example) {
+    field.example = example;
+  }
+  return field;
+}
+
+function flattenFormFields(definition) {
+  return (definition?.sections || []).flatMap((section) => section.fields || []);
+}
+
+function fieldKey(value) {
+  return clean(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function slugify(value) {
+  return fieldKey(value).replaceAll("_", "-");
+}
+
+function uniqueId(value, used) {
+  const base = clean(value);
+  if (!base) {
+    return "";
+  }
+  let next = base;
+  let index = 2;
+  while (used.has(next)) {
+    next = `${base}_${index}`;
+    index += 1;
+  }
+  used.add(next);
+  return next;
+}
+
+function optionLines(value) {
+  return uniqueCleanValues(String(value || "").split(/\r?\n/));
+}
+
+function uniqueCleanValues(values) {
+  const seen = new Set();
+  const out = [];
+  for (const value of values || []) {
+    const next = clean(value);
+    const key = norm(next);
+    if (!next || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push(next);
+  }
+  return out;
+}
+
+function labelFromName(name) {
+  return clean(name).split("_").filter(Boolean).map(titleCaseWord).join(" ");
 }
 
 export async function getCycle(env) {
@@ -171,7 +510,7 @@ export async function updateCycle(env, data, actor) {
       Number(data.function_reminder_hours || cycle.function_reminder_hours),
       clean(data.daily_digest_time) || cycle.daily_digest_time,
       clean(data.admin_email) || cycle.admin_email,
-      parseBool(data.aop_required) ? 1 : 0,
+      0,
       parseBool(data.allow_public_test_mode) ? 1 : 0,
       clean(data.manager_rework_send_mode) || cycle.manager_rework_send_mode,
       clean(data.function_rework_send_mode) || cycle.function_rework_send_mode,
@@ -184,13 +523,14 @@ export async function updateCycle(env, data, actor) {
   return after;
 }
 
-export async function submitApplication(env, cycle, user, input, source = "applicant") {
+export async function submitApplication(env, cycle, user, input, source = "applicant", definition = null) {
   if (source === "applicant") {
     input.applicant_name = user.name;
     input.applicant_email = user.email;
   }
-  const data = normalizeSubmissionData(user, input);
-  const flags = analyzeFlags(data, cycle);
+  const formDefinition = definition || await getApplicantFormDefinition(env, cycle.id);
+  const data = normalizeSubmissionData(user, input, formDefinition);
+  const flags = submissionFlags(data, cycle, formDefinition);
   if (source === "applicant") {
     validateApplicantInput(data, cycle, flags);
   }
@@ -336,8 +676,20 @@ export async function submitApplication(env, cycle, user, input, source = "appli
   return getSubmission(env, submissionId);
 }
 
-function normalizeSubmissionData(user, input) {
+function normalizeSubmissionData(user, input, definition = APPLICANT_FORM_DEFINITION) {
+  const data = {};
+  for (const fieldDef of flattenFormFields(definition)) {
+    if (!fieldDef.name) {
+      continue;
+    }
+    if (fieldDef.kind === "checkbox") {
+      data[fieldDef.name] = parseBool(input[fieldDef.name]) ? "yes" : "";
+    } else {
+      data[fieldDef.name] = clean(input[fieldDef.name]);
+    }
+  }
   return {
+    ...data,
     applicant_name: clean(input.applicant_name || user.name),
     applicant_email: clean(input.applicant_email || user.email),
     manager_name: normalizeManagerName(input.manager_name, input.manager_email),
@@ -354,6 +706,32 @@ function normalizeSubmissionData(user, input) {
     manager_aligned: parseBool(input.manager_aligned) ? "yes" : "",
     support_required: clean(input.support_required),
   };
+}
+
+function submissionFlags(data, cycle, definition) {
+  return normalizeSubmissionFlags([...analyzeFlags(data, cycle), ...dynamicRequiredFlags(data, cycle, definition)]);
+}
+
+function normalizeSubmissionFlags(flags) {
+  return [...new Set(flags || [])].filter((flag) => flag !== "blank_required:aop");
+}
+
+function dynamicRequiredFlags(data, cycle, definition) {
+  const flags = [];
+  const knownNames = new Set(flattenFormFields(APPLICANT_FORM_DEFINITION).map((field) => field.name));
+  for (const field of flattenFormFields(definition)) {
+    if (!field.name || knownNames.has(field.name)) {
+      continue;
+    }
+    const required = field.requiredWhen ? Boolean(cycle[field.requiredWhen]) : Boolean(field.required);
+    if (!required) {
+      continue;
+    }
+    if (field.kind === "checkbox" ? !parseBool(data[field.name]) : isMissingAnswer(data[field.name])) {
+      flags.push(`blank_required:${field.name}`);
+    }
+  }
+  return flags;
 }
 
 function normalizeManagerName(name, email) {
@@ -396,15 +774,9 @@ function titleCaseWord(value) {
 }
 
 function validateApplicantInput(data, cycle, flags) {
-  const blockers = [...flags];
-  if (!cycle.aop_required) {
-    const i = blockers.indexOf("blank_required");
-    if (i >= 0 && clean(data.aop)) {
-      blockers.splice(i, 1);
-    }
-  }
+  const blockers = normalizeSubmissionFlags(flags);
   if (blockers.length) {
-    throw new Error(`Fix before submit: ${flagLabels(blockers).join("; ")}`);
+    throw new Error(`Please fill before submitting: ${flagLabels(blockers).join("; ")}`);
   }
 }
 
@@ -749,9 +1121,10 @@ export async function auditForEntity(env, cycleId, entityType, entityId) {
 
 export async function auditList(env, cycleId) {
   const rows = await env.DB.prepare(
-    `SELECT * FROM audit_events
+    `SELECT id, cycle_id, actor_email, entity_type, entity_id, action, undo_until, created_at
+     FROM audit_events
      WHERE cycle_id = ?
-     ORDER BY id DESC LIMIT 120`
+     ORDER BY id DESC LIMIT 80`
   )
     .bind(cycleId)
     .all();
@@ -792,6 +1165,81 @@ export async function updateRouteEmails(env, cycleId, input, actor) {
     await env.DB.batch(statements);
   }
   await audit(env, cycleId, actor, "routes", cycleId, "route_emails_updated", null, JSON.stringify(input));
+}
+
+export async function updateDropdownLists(env, cycleId, input, actor) {
+  const routes = await listRoutes(env, cycleId);
+  const statements = [];
+  const groupCount = Number(input.dropdown_group_count || 0);
+
+  for (let i = 0; i < groupCount; i += 1) {
+    const oldDepartment = clean(input[`dropdown_old_department_${i}`]);
+    const groupRows = routes.filter((route) => norm(route.department) === norm(oldDepartment));
+    if (!oldDepartment || !groupRows.length) {
+      continue;
+    }
+    if (parseBool(input[`dropdown_delete_${i}`])) {
+      for (const route of groupRows) {
+        statements.push(env.DB.prepare("DELETE FROM routing_rules WHERE id = ? AND cycle_id = ?").bind(route.id, cycleId));
+      }
+      continue;
+    }
+
+    const nextDepartment = clean(input[`dropdown_department_${i}`]) || oldDepartment;
+    const ownerName = clean(input[`dropdown_owner_name_${i}`]) || groupRows[0].owner_name || "Owner TBD";
+    const ownerEmail = clean(input[`dropdown_owner_email_${i}`]);
+    const active = parseBool(input[`dropdown_active_${i}`]) ? 1 : 0;
+    const desiredSubFunctions = optionLines(input[`dropdown_sub_functions_${i}`]);
+    const desired = desiredSubFunctions.length ? desiredSubFunctions : [""];
+    const rowsBySubFunction = new Map(groupRows.map((route) => [norm(route.sub_department), route]));
+    const keptRouteIds = new Set();
+
+    desired.forEach((subDepartment, subIndex) => {
+      const existing = rowsBySubFunction.get(norm(subDepartment));
+      if (existing) {
+        keptRouteIds.add(existing.id);
+        statements.push(
+          env.DB.prepare(
+            "UPDATE routing_rules SET department = ?, sub_department = ?, owner_name = ?, owner_email = ?, active = ?, sort_order = ? WHERE id = ? AND cycle_id = ?"
+          ).bind(nextDepartment, subDepartment, ownerName, ownerEmail, active, i * 100 + subIndex, existing.id, cycleId)
+        );
+      } else {
+        statements.push(
+          env.DB.prepare(
+            `INSERT INTO routing_rules (cycle_id, department, sub_department, owner_name, owner_email, active, sort_order)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`
+          ).bind(cycleId, nextDepartment, subDepartment, ownerName, ownerEmail, active, i * 100 + subIndex)
+        );
+      }
+    });
+
+    for (const route of groupRows) {
+      if (!keptRouteIds.has(route.id)) {
+        statements.push(env.DB.prepare("DELETE FROM routing_rules WHERE id = ? AND cycle_id = ?").bind(route.id, cycleId));
+      }
+    }
+  }
+
+  const newDepartment = clean(input.new_dropdown_department);
+  if (newDepartment) {
+    const ownerName = clean(input.new_dropdown_owner_name) || "Owner TBD";
+    const ownerEmail = clean(input.new_dropdown_owner_email);
+    const subFunctions = optionLines(input.new_dropdown_sub_functions);
+    const desired = subFunctions.length ? subFunctions : [""];
+    desired.forEach((subDepartment, subIndex) => {
+      statements.push(
+        env.DB.prepare(
+          `INSERT INTO routing_rules (cycle_id, department, sub_department, owner_name, owner_email, active, sort_order)
+           VALUES (?, ?, ?, ?, ?, 1, ?)`
+        ).bind(cycleId, newDepartment, subDepartment, ownerName, ownerEmail, Date.now() + subIndex)
+      );
+    });
+  }
+
+  if (statements.length) {
+    await env.DB.batch(statements);
+  }
+  await audit(env, cycleId, actor, "routes", cycleId, "dropdown_lists_updated", null, JSON.stringify(input));
 }
 
 export async function addRoute(env, cycleId, input, actor) {
@@ -837,6 +1285,32 @@ export async function addTeam1Manager(env, cycleId, input, actor) {
     .run();
   await audit(env, cycleId, actor, "team1", cycleId, "team1_manager_added", null, JSON.stringify(input));
   return result.meta.last_row_id;
+}
+
+export async function updateTeam1Managers(env, cycleId, input, actor) {
+  const managers = await listTeam1(env, cycleId);
+  const statements = [];
+  for (const manager of managers) {
+    if (parseBool(input[`team1_delete_${manager.id}`])) {
+      statements.push(env.DB.prepare("DELETE FROM team1_managers WHERE id = ? AND cycle_id = ?").bind(manager.id, cycleId));
+      continue;
+    }
+    const name = clean(input[`team1_name_${manager.id}`]) || manager.manager_name;
+    const email = clean(input[`team1_email_${manager.id}`]);
+    const active = parseBool(input[`team1_active_${manager.id}`]) ? 1 : 0;
+    statements.push(
+      env.DB.prepare(
+        `UPDATE team1_managers
+         SET manager_name = ?, manager_name_norm = ?, manager_email = ?, manager_email_norm = ?, active = ?
+         WHERE id = ? AND cycle_id = ?`
+      )
+        .bind(name, norm(name), email, norm(email), active, manager.id, cycleId)
+    );
+  }
+  if (statements.length) {
+    await env.DB.batch(statements);
+  }
+  await audit(env, cycleId, actor, "team1", cycleId, "team1_managers_updated", null, JSON.stringify(input));
 }
 
 export async function saveSnapshot(env, cycleId, label, actor) {
@@ -914,6 +1388,8 @@ export async function startNewQuarter(env, actor, input = {}) {
   if (current.state !== "finalized") {
     throw new Error("Finalize current cycle before starting next quarter");
   }
+  await ensureFormConfigTable(env);
+  const currentFormDefinition = await getApplicantFormDefinition(env, current.id);
   const stats = await dashboardStats(env, current.id);
   const flags = await env.DB.prepare(
     `SELECT objective_flags_json, COUNT(*) AS count
@@ -949,10 +1425,15 @@ export async function startNewQuarter(env, actor, input = {}) {
       current.function_due_hours,
       current.function_reminder_hours,
       current.daily_digest_time,
-      current.aop_required
+      0
     )
     .run();
   const newCycleId = result.meta.last_row_id;
+  await env.DB.prepare(
+    "INSERT INTO form_configs (cycle_id, definition_json, updated_by_email) VALUES (?, ?, ?)"
+  )
+    .bind(newCycleId, JSON.stringify(currentFormDefinition), actor)
+    .run();
   const routes = await listRoutes(env, current.id);
   const routeStatements = routes.map((route, index) =>
     env.DB.prepare(
